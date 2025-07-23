@@ -1,0 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Jupyter notebooks directory
+notebooks/
+scripts/
+MMFakeBenchResults/
+scratch/results
+scratch/step_logs
+# Data directory
+data/
+
+# Virtual environment
+venv/
+
+# Environment variables file
+.env

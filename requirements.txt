@@ -1,0 +1,36 @@
+# Core
+python-dotenv
+pandas
+numpy
+scikit-learn
+matplotlib
+requests
+
+# LangChain and LLMs
+langchain
+langchain-openai
+langchain-google-genai
+langchain-community
+openai
+google-generativeai
+
+# Search
+duckduckgo-search
+google-search-results
+
+# NLP & Transformers
+transformers
+torch
+sentencepiece
+
+# Image handling
+pillow
+
+# Pydantic and Typing
+pydantic
+
+# Google Colab-specific (optional; remove if running locally)
+# google.colab
+
+# Other
+tqdm
