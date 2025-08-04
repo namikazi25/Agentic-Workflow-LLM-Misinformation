@@ -7,6 +7,7 @@ Depends on ModelRouter (assumed to live in src/ or will be imported later).
 from __future__ import annotations
 import os
 from typing import Dict, Any
+from model_router import ModelRouter
 
 # We will import ModelRouter from a single shared file later;
 # for now we forward-declare so the code runs standalone.

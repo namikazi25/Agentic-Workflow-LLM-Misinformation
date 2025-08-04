@@ -15,10 +15,11 @@ from typing import List, Dict, Any
 STEP = 8            # 1,2,3,... – only change this line
 JSON_PATH       = r"..\data\MMFakeBench_test.json"
 IMAGES_BASE_DIR = r"..\data\MMFakeBench_test-001\MMFakeBench_test"
-LIMIT           = 10        # small set while iterating
-SEED            = 42
+LIMIT           = 50        # small set while iterating
+SEED            = 71
 NUM_CHAINS      = 3        # 1..N
 NUM_Q_PER_CHAIN = 3        # 1..N
+QGEN_STRATEGY = "report"   # "headline" | "report" | "auto"
 # -------------------------------------------------------
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -60,7 +61,8 @@ elif STEP == 6:
 elif STEP == 8:
     from step01_dataloader import MMFakeBenchDataset
     from step02_relevancy import ImageHeadlineRelevancyChecker
-    from step03_qgen_no_enrich import QAGenerationToolNoEnrich
+    from step03a_event_context import EventContextGenerator          # NEW
+    from step03_qgen_no_enrich import QAGenerationTool                         # NEW
     from step04_webqa_stub import WebQAModuleStub as WebQAModule
     from model_router import ModelRouter
     from step05_qa_selector import QASelector
@@ -345,7 +347,10 @@ def run_step6():
     )
 
 def run_step8():
-    """Full pipeline using Brave Search for evidence, then LLM answers, batch mode."""
+    """
+    Full pipeline (Brave evidence + LLM answers) with selectable
+    question-generation strategy: headline-only or enriched event report.
+    """
     from step05_qa_selector import QASelector
     from step06_final_classifier import FinalClassifier
     from brave_search import brave_search_answer
@@ -355,19 +360,36 @@ def run_step8():
 
     results_list = []
     for sample_idx, (img_path, headline, label_bin, label_multi, *_rest) in enumerate(dataset):
-        print(f"\nSAMPLE {sample_idx + 1}/{len(dataset)}\nHeadline: {headline}\n")
+        print(f"\nSAMPLE {sample_idx + 1}/{len(dataset)}")
+        print("Headline:", headline, "\n")
 
-        # 1) Image–headline relevancy
+        # 1️⃣  Image–headline relevancy
         checker = ImageHeadlineRelevancyChecker(mr)
         rel = checker.check_relevancy(img_path, headline)
         print("Relevancy:", rel["text"], "\n")
 
-        # 2) Per-chain Q-A + selection using Brave
+        # raw_rel = rel["text"]
+        # image_desc = raw_rel.split("Observation:", 1)[-1].split("Action", 1)[0].strip()
+
+        # 2️⃣  Optional event-report enrichment (once per headline)
+        event_report = None
+        if QGEN_STRATEGY in {"report", "auto"}:
+            ctx_gen = EventContextGenerator(headline, img_path, mr)
+            raw_report, event_report = ctx_gen.run()
+            print("Event summary:\n", event_report.get("summary", raw_report), "\n")
+
+        # 3️⃣  Per-chain Q-A with Brave search
         best_qa_pairs: list[dict[str, Any]] = []
         for chain_idx in range(NUM_CHAINS):
             qa_branch: list[dict[str, Any]] = []
+
             for q_num in range(NUM_Q_PER_CHAIN):
-                q_tool = QAGenerationToolNoEnrich(headline, qa_branch)
+                q_tool = QAGenerationTool(
+                    headline=headline,
+                    previous_qa=qa_branch,
+                    event_report=event_report,
+                    strategy=QGEN_STRATEGY,
+                )
                 question, ok_q = q_tool.run(mr.get_model())
                 if not ok_q:
                     qa_branch.append({"question": question, "answer": "Q-Gen failed"})
@@ -375,39 +397,34 @@ def run_step8():
 
                 # --- Brave Search ---
                 snippets = brave_search_answer(question, k=8)
-                evidence = "\n".join(f"- {s}" for s in snippets) if snippets else "No relevant results found."
+                evidence = "\n".join(f"- {s}" for s in snippets) or "No relevant results found."
 
-                # --- LLM answers grounded on Brave ---
+                # --- LLM answer grounded in Brave evidence ---
                 from langchain_core.prompts import ChatPromptTemplate
                 prompt = ChatPromptTemplate.from_messages([
-                    ("system", 
-                     "Given these web search snippets, answer the user's question factually using only the provided evidence. "
-                     "If the evidence does not contain the answer, say 'No relevant answer found.'\n"
+                    ("system",
+                     "Using ONLY the evidence below, answer the user's question factually. "
+                     "If the evidence is insufficient, reply 'No relevant answer found.'\n\n"
                      f"Evidence:\n{evidence}"),
-                    ("human", question)
+                    ("human", question),
                 ])
                 try:
-                    chain = prompt | mr.get_model()
-                    response = chain.invoke({})
-                    answer = response.content.strip() if hasattr(response, "content") else str(response).strip()
-                    ok_a = bool(answer)
+                    answer_resp = (prompt | mr.get_model()).invoke({})
+                    answer = answer_resp.content.strip() if hasattr(answer_resp, "content") else str(answer_resp).strip()
                 except Exception as e:
                     answer = f"Brave-LLM Error: {e}"
-                    ok_a = False
 
                 qa_branch.append({"question": question, "answer": answer})
 
+            # Select best Q-A from this branch
             selector = QASelector(qa_branch)
-            best, ok_sel = selector.run(mr.get_model())
-            if ok_sel and best:
-                best_qa_pairs.append(best)
-            else:
-                best_qa_pairs.append(qa_branch[0])
+            best_pair, ok_sel = selector.run(mr.get_model())
+            best_qa_pairs.append(best_pair if ok_sel and best_pair else qa_branch[0])
 
         print("Best Q-A per chain:")
         print(json.dumps(best_qa_pairs, indent=2, ensure_ascii=False))
 
-        # 3) Final classification
+        # 4️⃣  Final classification
         classifier = FinalClassifier(headline, rel["text"], best_qa_pairs)
         decision, reason = classifier.run(mr.get_model())
 
@@ -415,7 +432,7 @@ def run_step8():
         print("DECISION:", decision)
         print("REASON  :", reason)
 
-        # 4) Bundle everything
+        # 5️⃣  Record keeping
         record = {
             "image_path": img_path,
             "label_binary": label_bin,
@@ -430,8 +447,9 @@ def run_step8():
         print("\nFull record")
         print(json.dumps(record, indent=2, ensure_ascii=False))
 
-    predictions = [rec["final_decision"] for rec in results_list]
-    ground_truth = [rec["label_binary"] for rec in results_list]  # True / Fake
+    # 6️⃣  Evaluation
+    predictions = [r["final_decision"] for r in results_list]
+    ground_truth = [r["label_binary"] for r in results_list]
 
     from step07_evaluator import evaluate_results
     evaluate_results(
@@ -439,6 +457,7 @@ def run_step8():
         ground_truth_raw=ground_truth,
         save_path="results/step08_eval.csv",
     )
+
 
 
 # ---------- DISPATCH ----------

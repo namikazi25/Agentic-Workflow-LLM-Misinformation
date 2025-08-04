@@ -12,7 +12,8 @@ from typing import Tuple, Optional, Any, Dict
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-
+from dotenv import load_dotenv
+load_dotenv() 
 
 def encode_image(image_path: str) -> Tuple[Optional[str], Optional[str]]:
     """
