@@ -13,8 +13,8 @@ from typing import List, Dict, Any
 
 # ---------- CONFIGURATION SECTION (edit here) ----------
 STEP = 8            # 1,2,3,... – only change this line
-JSON_PATH       = r"..\data\MMFakeBench_test.json"
-IMAGES_BASE_DIR = r"..\data\MMFakeBench_test-001\MMFakeBench_test"
+JSON_PATH       = r"../data/MMFakeBench_test.json"
+IMAGES_BASE_DIR = r"../data/MMFakeBench_test-001/MMFakeBench_test"
 LIMIT           = 50        # small set while iterating
 SEED            = 71
 NUM_CHAINS      = 3        # 1..N
