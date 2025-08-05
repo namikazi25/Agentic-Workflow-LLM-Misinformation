@@ -403,64 +403,14 @@ def run_step8():
                 from langchain_core.prompts import ChatPromptTemplate
                 prompt = ChatPromptTemplate.from_messages([
                     ("system",
-                     "Using ONLY the evidence below, answer the user's question factually. "
-                     "If the evidence is insufficient, reply 'No relevant answer found.'\n\n"
-                     f"Evidence:\n{evidence}"),
-                    ("human", question),
+                     "using only the evidence below, answer the user's question factually. "
+                     "if the evidence is insufficient, reply 'no relevant answer found.'\n\n"
+                     "evidence:\n{evidence}"), # changed this line to use {evidence} as a placeholder
+                    ("human", "{question}"), # changed this line to use {question} as a placeholder
                 ])
                 try:
-                    answer_resp = (prompt | mr.get_model()).invoke({})
+                    # pass the variables to invoke as a dictionary
+                    answer_resp = (prompt | mr.get_model()).invoke({"evidence": evidence, "question": question})
                     answer = answer_resp.content.strip() if hasattr(answer_resp, "content") else str(answer_resp).strip()
                 except Exception as e:
-                    answer = f"Brave-LLM Error: {e}"
-
-                qa_branch.append({"question": question, "answer": answer})
-
-            # Select best Q-A from this branch
-            selector = QASelector(qa_branch)
-            best_pair, ok_sel = selector.run(mr.get_model())
-            best_qa_pairs.append(best_pair if ok_sel and best_pair else qa_branch[0])
-
-        print("Best Q-A per chain:")
-        print(json.dumps(best_qa_pairs, indent=2, ensure_ascii=False))
-
-        # 4️⃣  Final classification
-        classifier = FinalClassifier(headline, rel["text"], best_qa_pairs)
-        decision, reason = classifier.run(mr.get_model())
-
-        print("\nFinal Decision")
-        print("DECISION:", decision)
-        print("REASON  :", reason)
-
-        # 5️⃣  Record keeping
-        record = {
-            "image_path": img_path,
-            "label_binary": label_bin,
-            "label_multiclass": label_multi,
-            "headline": headline,
-            "relevancy": rel["text"],
-            "best_qa_pairs": best_qa_pairs,
-            "final_decision": decision,
-            "explanation": reason,
-        }
-        results_list.append(record)
-        print("\nFull record")
-        print(json.dumps(record, indent=2, ensure_ascii=False))
-
-    # 6️⃣  Evaluation
-    predictions = [r["final_decision"] for r in results_list]
-    ground_truth = [r["label_binary"] for r in results_list]
-
-    from step07_evaluator import evaluate_results
-    evaluate_results(
-        predictions=predictions,
-        ground_truth_raw=ground_truth,
-        save_path="results/step08_eval.csv",
-    )
-
-
-
-# ---------- DISPATCH ----------
-if __name__ == "__main__":
-    print(f"======== STEP {STEP} ========")
-    globals()[f"run_step{STEP}"]()
+                    answer = f"brave-llm error: {e}"
