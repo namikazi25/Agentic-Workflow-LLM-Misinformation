@@ -1,176 +1,271 @@
-# src/model_router.py
 """
-Single, reusable ModelRouter for OpenAI or Gemini.
+scratch/model_router.py
+=======================
+
+Single, reusable *ModelRouter* that supports **OpenAI GPT-models** and
+**Google Gemini** via LangChain wrappers.
+
+Key improvements over the legacy version
+----------------------------------------
+1. **Singleton LLMs** – an LLM is created once per (model-name, temperature)
+   combination and cached in-memory.  Subsequent calls reuse it with *zero*
+   overhead.
+
+2. **Memoised `encode_image`** – converts each image file to base-64 at most
+   once per run (LRU cache, 1 Ki images by default).
+
+3. Reduced public surface:
+   • `get()` ⇒ returns the cached LangChain LLM  
+   • `call()` ⇒ retry wrapper, returns `{"raw": …, "confidence": float}`  
+   • `create_multimodal_message()` ⇒ helper for Gemini vision
+
+Environment variables
+---------------------
+* ``OPENAI_API_KEY``
+* ``GEMINI_API_KEY``   (a/k/a ``GOOGLE_API_KEY``)
+
+Both are read lazily; no import-time failure if missing.
 """
 
 from __future__ import annotations
+
 import os
-import time
 import math
-from typing import Tuple, Optional, Any, Dict
+import time
+from typing import Any, Dict, Optional, Tuple
 
-from langchain_openai import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from dotenv import load_dotenv
-load_dotenv() 
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
-def encode_image(image_path: str) -> Tuple[Optional[str], Optional[str]]:
+from .cache import memo
+from . import config as C
+
+# --------------------------------------------------------------------------- #
+# Internal helpers
+# --------------------------------------------------------------------------- #
+
+
+@memo(maxsize=8)
+def _make_llm(
+    model_name: str,
+    temperature: float,
+    openai_key: str | None,
+    google_key: str | None,
+):
     """
-    Encode an image file to base64 and return (base64_string, mime_type).
+    Factory that returns a *single* instance per unique argument tuple
+    thanks to the @memo decorator.
     """
+    mdl = model_name.lower()
+
+    if "gpt" in mdl:
+        if not openai_key:
+            raise ValueError("OPENAI_API_KEY not set.")
+        return ChatOpenAI(
+            api_key=openai_key,
+            model=model_name,
+            temperature=temperature,
+            logprobs=1,
+            model_kwargs={"return_full_text": False},
+        )
+
+    if "gemini" in mdl:
+        if not google_key:
+            raise ValueError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set.")
+        return ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=google_key,
+            temperature=temperature,
+            candidate_count=1,
+        )
+
+    raise ValueError(f"Unsupported model: {model_name!r}")
+
+
+@memo(maxsize=1024)  # encodes up to 1 024 unique image paths
+def encode_image(image_path: str) -> Tuple[str | None, str | None]:
+    """
+    Convert *image_path* → ``(base64_str, mime_type)`` once per run.
+
+    Returns ``(None, None)`` if the file does not exist OR Pillow fails
+    to read it (caller decides next step).
+    """
+    import base64
+    from io import BytesIO
+    from pathlib import Path
+
+    from PIL import Image  # heavy import deferred
+
+    path = Path(image_path)
+    if not path.is_file():
+        return None, None
+
     try:
-        import base64
-        from PIL import Image
-        from io import BytesIO
-
-        if not os.path.isfile(image_path):
-            return None, None
-
-        with Image.open(image_path) as img:
-            img.verify()
-        with Image.open(image_path) as img:
-            if img.mode in ("RGBA", "LA", "P"):
+        with Image.open(path) as img:
+            if img.mode in ("RGBA", "P", "LA"):
                 img = img.convert("RGB")
-            buffer = BytesIO()
-            img.save(buffer, format="JPEG", quality=90)
-            b64 = base64.b64encode(buffer.getvalue()).decode("ascii")
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=90)
+            b64 = base64.b64encode(buf.getvalue()).decode("ascii")
             return b64, "image/jpeg"
     except Exception:
         return None, None
 
 
+# --------------------------------------------------------------------------- #
+# Public class
+# --------------------------------------------------------------------------- #
+
+
 class ModelRouter:
     """
-    Thin wrapper around LangChain models (OpenAI GPT or Google Gemini).
-    Provides:
-        - automatic model selection by name
-        - retry/back-off logic
-        - multimodal helpers
+    Wrapper that unifies interaction with LangChain models
+    and provides retry / confidence-score convenience.
     """
 
     def __init__(
         self,
-        model_name: str,
+        model_name: str = C.MODEL_DEFAULT,
+        temperature: float = C.TEMPERATURE,
+        *,
+        max_retries: int = 5,
         openai_api_key: Optional[str] = None,
         google_api_key: Optional[str] = None,
-        temperature: float = 0.2,
-        max_retries: int = 5,
     ) -> None:
-        self.model_name = model_name.lower()
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-        self.google_api_key = google_api_key or os.getenv("GEMINI_API_KEY")
+        self.model_name = model_name
         self.temperature = temperature
         self.max_retries = max_retries
-        self._llm = self._init_llm()
+        self.openai_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        self.google_key = google_api_key or os.getenv("GEMINI_API_KEY")
 
-    def _init_llm(self) -> Any:
-        if "gpt" in self.model_name:
-            if not self.openai_api_key:
-                raise ValueError("OpenAI key missing.")
-            return ChatOpenAI(
-                api_key=self.openai_api_key,
-                model=self.model_name,
-                temperature=self.temperature,
-                logprobs=1,
-                model_kwargs={"return_full_text": False},
-            )
-        elif "gemini" in self.model_name:
-            if not self.google_api_key:
-                raise ValueError("Google API key missing.")
-            return ChatGoogleGenerativeAI(
-                model=self.model_name,
-                google_api_key=self.google_api_key,
-                temperature=self.temperature,
-                candidate_count=1,
-            )
-        else:
-            raise ValueError(f"Unsupported model: {self.model_name}")
+        # Cached LLM instance (singleton behaviour)
+        self._llm = _make_llm(
+            self.model_name,
+            self.temperature,
+            self.openai_key,
+            self.google_key,
+        )
 
     # ------------------------------------------------------------------ #
-    # Public helpers                                                     #
+    # Accessors
     # ------------------------------------------------------------------ #
-    def get_model(self) -> Any:
+
+    def get(self):
+        """Return the cached LangChain LLM instance."""
         return self._llm
 
-    def switch_model(self, new_model_name: str) -> None:
-        self.model_name = new_model_name.lower()
-        self._llm = self._init_llm()
+    def switch_model(self, new_model_name: str, *, temperature: float | None = None):
+        """Swap to a different model *without* reinstantiating existing ones."""
+        self.model_name = new_model_name
+        if temperature is not None:
+            self.temperature = temperature
+        self._llm = _make_llm(
+            self.model_name,
+            self.temperature,
+            self.openai_key,
+            self.google_key,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Multimodal helper
+    # ------------------------------------------------------------------ #
 
     def create_multimodal_message(
         self,
         system_prompt: str,
         text_prompt: str,
         image_path: str,
-    ) -> Any:
+    ):
+        """
+        Build a Gemini-compatible multimodal message list.
+
+        Raises
+        ------
+        ValueError
+            If the image cannot be encoded (non-existent or corrupt file).
+        """
         b64, mime = encode_image(image_path)
         if not b64:
             raise ValueError(f"Cannot encode image: {image_path}")
 
-        messages = [
+        return [
             SystemMessage(content=system_prompt),
             HumanMessage(
                 content=[
                     {"type": "text", "text": text_prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                ]
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}"},
+                    },
+                ],
             ),
         ]
-        return messages
 
-    def call_model(self, messages: Any) -> Dict[str, Any]:
+    # ------------------------------------------------------------------ #
+    # Core invocation with retry & confidence
+    # ------------------------------------------------------------------ #
+
+    def call(self, messages) -> Dict[str, Any]:
         """
-        Invoke the LLM with retries and return:
-            {"raw": <LangChain message>, "confidence": <float 0-1>}
+        Invoke the LLM with *messages* (either list[Message] or str prompt).
+
+        Returns
+        -------
+        dict
+            ``{"raw": <LangChain return>, "confidence": float}``
+
+        Confidence is estimated heuristically:
+        • OpenAI:   exp(average token log-prob) ∈ (0,1]
+        • Gemini:   first candidate.probability  ∈ [0,1]
+        • Fallback: 0.5
         """
         tries = 0
         while tries < self.max_retries:
             try:
                 resp = self._llm.invoke(messages)
 
-                # default fallback
-                conf = 0.5
+                # --- confidence heuristic -------------------------------- #
+                conf = 0.5  # fallback
 
-                # OpenAI logprobs
+                # OpenAI
                 llm_out = getattr(resp, "llm_output", {})
                 if llm_out and "token_logprobs" in llm_out:
-                    lp = llm_out["token_logprobs"]
-                    if lp:
-                        avg = sum(lp) / len(lp)
-                        conf = float(min(max(math.exp(avg), 0.0), 1.0))
+                    logs = llm_out["token_logprobs"]
+                    if logs:
+                        conf = float(min(max(math.exp(sum(logs) / len(logs)), 0.0), 1.0))
 
-                # Gemini candidate probability
+                # Gemini
                 elif hasattr(resp, "candidates") and resp.candidates:
-                    cand = resp.candidates[0]
-                    prob = getattr(cand, "probability", None)
+                    prob = getattr(resp.candidates[0], "probability", None)
                     if prob is not None:
                         conf = float(min(max(prob, 0.0), 1.0))
 
                 return {"raw": resp, "confidence": conf}
 
-            except Exception as e:
-                msg = str(e).lower()
-                if any(x in msg for x in ("rate limit", "429", "quota", "please try again")):
-                    sleep_time = 2 ** tries
-                    time.sleep(sleep_time)
+            except Exception as exc:  # noqa: BLE001
+                msg = str(exc).lower()
+                if any(tok in msg for tok in ("rate limit", "429", "quota", "please try again")):
+                    time.sleep(2**tries)  # exponential back-off: 1,2,4,8,…
                     tries += 1
                     continue
-                raise e
+                raise  # non-retryable
 
-        raise RuntimeError("Max retries exhausted")
+        raise RuntimeError("Max retries exhausted.")
 
-    def llm_multimodal(
+    # ------------------------------------------------------------------ #
+    # Convenience multimodal wrapper
+    # ------------------------------------------------------------------ #
+
+    def call_multimodal(
         self,
         system_prompt: str,
-        text: str,
+        text_prompt: str,
         image_path: str,
-        **extra_llm_kwargs: Any,
     ) -> Dict[str, Any]:
-        messages = self.create_multimodal_message(system_prompt, text, image_path)
-        if extra_llm_kwargs:
-            # fallback if model refuses kwargs
-            try:
-                return self.call_model(messages)
-            except TypeError:
-                return self.call_model(messages)
-        return self.call_model(messages)
+        """
+        Convenience wrapper:
+        ``create_multimodal_message → call`` in one line.
+        """
+        messages = self.create_multimodal_message(system_prompt, text_prompt, image_path)
+        return self.call(messages)

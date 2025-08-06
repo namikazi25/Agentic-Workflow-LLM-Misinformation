@@ -10,6 +10,7 @@ scratch/results
 scratch/step_logs
 # Data directory
 data/
+code/
 
 # Virtual environment
 venv/

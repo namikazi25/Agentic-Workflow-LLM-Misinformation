@@ -34,3 +34,10 @@ pydantic
 
 # Other
 tqdm
+
+# Async & caching
+aiohttp>=3.9
+async-timeout>=4.0
+cachetools>=5.3
+tenacity>=8.2
+tqdm>=4.66
