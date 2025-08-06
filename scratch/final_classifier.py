@@ -67,6 +67,13 @@ _SYSTEM_TEMPLATE = textwrap.dedent(
     """
 )
 
+_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
+    [
+        ("system", _SYSTEM_TEMPLATE),
+        ("human", "HEADLINE: {headline}"),
+    ]
+)
+
 # --------------------------------------------------------------------------- #
 # Chain cache (prompt × llm)
 # --------------------------------------------------------------------------- #
@@ -75,8 +82,8 @@ _SYSTEM_TEMPLATE = textwrap.dedent(
 from cachetools import LRUCache
 _CHAIN_CACHE = LRUCache(maxsize=32)
 
+@memo(maxsize=32)
 def _get_chain(prompt_obj, llm):
-    """Return a compiled (prompt | llm) chain, caching on object IDs."""
     key = (id(prompt_obj), id(llm))
     if key not in _CHAIN_CACHE:
         _CHAIN_CACHE[key] = prompt_obj | llm
@@ -138,7 +145,7 @@ class FinalClassifier:
             f"Q: {qa['question']}\nA: {qa['answer']}" for qa in valid_pairs
      )
         # Append any custom instructions once
-        prompt_chain = _get_chain(_SYSTEM_TEMPLATE, llm)
+        prompt_chain = _get_chain(_PROMPT_TEMPLATE, llm)
         if self.extra_guidelines:
             prompt_chain = prompt_chain.partial(
                 __system_override=self.extra_guidelines

@@ -121,3 +121,4 @@ Traceback (most recent call last):
 KeyboardInterrupt
 2025-08-06 23:25:22      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
 2025-08-06 23:26:49   WARNING  Batch selector failed, falling back: 'Input to ChatPromptTemplate is missing variables {\'\\n    "branch"\'}.  Expected: [\'\\n    "branch"\', \'branches_block\'] Received: [\'branches_block\']\nNote: if you intended {\n    "branch"} to be part of the string and not a variable, please escape it with double curly braces like: \'{{\n    "branch"}}\'.\nFor troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/INVALID_PROMPT_INPUT '
+2025-08-06 23:30:53      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3

@@ -83,11 +83,11 @@ _PROMPT_MULTI = ChatPromptTemplate.from_messages(
 
                 Output a single-line JSON array; each element must have:
 
-                  {
+                  {{
                     "branch":   <int>,     // 1-based branch index
                     "question": <text>,
                     "answer":   <text>
-                  }
+                  }}
 
                 Do NOT include any keys besides the three above.
                 """
