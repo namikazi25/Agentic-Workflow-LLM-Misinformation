@@ -77,12 +77,10 @@ _PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
 # --------------------------------------------------------------------------- #
 # Chain cache (prompt × llm)
 # --------------------------------------------------------------------------- #
-
-
+# Cache: (id(prompt), id(llm)) ➜ compiled chain
 from cachetools import LRUCache
 _CHAIN_CACHE = LRUCache(maxsize=32)
 
-@memo(maxsize=32)
 def _get_chain(prompt_obj, llm):
     key = (id(prompt_obj), id(llm))
     if key not in _CHAIN_CACHE:

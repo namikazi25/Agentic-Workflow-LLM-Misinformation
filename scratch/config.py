@@ -53,7 +53,7 @@ NUM_Q_PER_CHAIN: int = 3
 #   "headline" – use headline text only
 #   "report"   – require event report context (will raise if missing)
 #   "auto"     – use "report" if context present, else "headline"
-QGEN_STRATEGY: str = "report"          # headline | report | auto
+QGEN_STRATEGY: str = "auto"          # headline | report | auto
 
 # --------------------------------------------------------------------------- #
 # Brave search

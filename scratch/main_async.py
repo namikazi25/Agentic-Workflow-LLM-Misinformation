@@ -76,12 +76,18 @@ async def generate_branch(
     branch: List[Dict[str, object]] = []
 
     for _ in range(C.NUM_Q_PER_CHAIN):
+        # If the event report is missing or invalid, fall back to headline mode
+        strategy = C.QGEN_STRATEGY
+        if strategy == "report" and not (event_report and event_report.get("summary")):
+            strategy = "headline"
+
         q_tool = QAGenerationTool(
             headline,
             branch,
-            event_report=event_report,
-            strategy=C.QGEN_STRATEGY,
+            event_report=event_report if strategy != "headline" else None,
+            strategy=strategy,
         )
+
         question, ok_q = q_tool.run(mr.get())
         if not ok_q:
             continue
