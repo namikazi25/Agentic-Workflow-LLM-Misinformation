@@ -26,8 +26,12 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List
+import os
+from dotenv import load_dotenv
 
 from tqdm.asyncio import tqdm
+
+load_dotenv()
 
 from . import config as C, log
 from .data_loader import MMFakeBenchDataset

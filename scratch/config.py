@@ -16,15 +16,15 @@ respective helper modules; here we keep pipeline-level knobs.
 # --------------------------------------------------------------------------- #
 
 # Path to the MMFakeBench JSON metadata file
-DATA_JSON: str = "../data/MMFakeBench_test.json"
+DATA_JSON: str = "data/MMFakeBench_test.json"
 
 # Directory with image sub-folders (real/, fake/, …)
-IMAGES_DIR: str = "../data/MMFakeBench_test-001/MMFakeBench_test"
+IMAGES_DIR: str = "data/MMFakeBench_test-001/MMFakeBench_test"
 
 # How many samples to load.
 # • None  → load ALL (can be slow + expensive)
 # • int   → random subset of that size (seed below)
-LIMIT: int | None = 50
+LIMIT: int | None = 5
 
 # Random seed used for sampling / shuffling
 SEED: int = 71

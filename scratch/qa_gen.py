@@ -89,9 +89,15 @@ _ENRICHED_PROMPT = ChatPromptTemplate.from_messages(
 # --------------------------------------------------------------------------- #
 
 
-@memo(maxsize=64)  # (prompt_id, llm_instance) → compiled chain
+from cachetools import LRUCache
+_CHAIN_CACHE = LRUCache(maxsize=32)
+
 def _get_chain(prompt_obj, llm):
-    return prompt_obj | llm
+    """Return a compiled (prompt | llm) chain, caching on object IDs."""
+    key = (id(prompt_obj), id(llm))
+    if key not in _CHAIN_CACHE:
+        _CHAIN_CACHE[key] = prompt_obj | llm
+    return _CHAIN_CACHE[key]
 
 
 # --------------------------------------------------------------------------- #

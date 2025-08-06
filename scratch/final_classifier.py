@@ -72,15 +72,15 @@ _SYSTEM_TEMPLATE = textwrap.dedent(
 # --------------------------------------------------------------------------- #
 
 
-@memo(maxsize=32)
-def _get_chain(llm):
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", _SYSTEM_TEMPLATE),
-            ("human", "HEADLINE: {headline}"),
-        ]
-    )
-    return prompt | llm
+from cachetools import LRUCache
+_CHAIN_CACHE = LRUCache(maxsize=32)
+
+def _get_chain(prompt_obj, llm):
+    """Return a compiled (prompt | llm) chain, caching on object IDs."""
+    key = (id(prompt_obj), id(llm))
+    if key not in _CHAIN_CACHE:
+        _CHAIN_CACHE[key] = prompt_obj | llm
+    return _CHAIN_CACHE[key]
 
 
 # --------------------------------------------------------------------------- #
@@ -130,12 +130,15 @@ class FinalClassifier:
 
     def run(self, llm) -> Tuple[str, str]:
         """Return `(decision, reason)`."""
+        valid_pairs = [qa for qa in self.qa_pairs if qa.get("question") and qa.get("answer")]
+        if not valid_pairs:
+                # everything upstream failed – bail out gracefully
+                return "Uncertain", "No valid evidence generated."
         qa_context = "\n".join(
-            f"Q: {qa['question']}\nA: {qa['answer']}" for qa in self.qa_pairs
-        )
-
+            f"Q: {qa['question']}\nA: {qa['answer']}" for qa in valid_pairs
+     )
         # Append any custom instructions once
-        prompt_chain = _get_chain(llm)
+        prompt_chain = _get_chain(_SYSTEM_TEMPLATE, llm)
         if self.extra_guidelines:
             prompt_chain = prompt_chain.partial(
                 __system_override=self.extra_guidelines

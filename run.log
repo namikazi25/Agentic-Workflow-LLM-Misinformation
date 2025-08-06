@@ -1,0 +1,123 @@
+2025-08-06 22:59:50      INFO  Pipeline start – 50 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:00:00   WARNING  Batch selector failed, falling back: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:35      INFO  Pipeline start – 50 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43     ERROR  Q-gen failed: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:05:43   WARNING  Batch selector failed, falling back: unhashable type: 'ChatPromptTemplate'
+2025-08-06 23:17:35      INFO  Pipeline start – 50 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-06 23:18:00     ERROR  Task was destroyed but it is pending!
+task: <Task pending name='Task-15' coro=<_wait_for_close() running at /home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/aiohttp/connector.py:136> cb=[Task.task_wakeup()]>
+2025-08-06 23:18:00     ERROR  Task exception was never retrieved
+future: <Task finished name='Task-1' coro=<main() done, defined at /teamspace/studios/this_studio/Agentic-Workflow-LLM-Misinformation/scratch/main_async.py:151> exception=KeyboardInterrupt()>
+Traceback (most recent call last):
+  File "/teamspace/studios/this_studio/Agentic-Workflow-LLM-Misinformation/scratch/__main__.py", line 20, in <module>
+    asyncio.run(_pipeline_main())
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/runners.py", line 47, in run
+    _cancel_all_tasks(loop)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/runners.py", line 63, in _cancel_all_tasks
+    loop.run_until_complete(tasks.gather(*to_cancel, return_exceptions=True))
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/base_events.py", line 636, in run_until_complete
+    self.run_forever()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/base_events.py", line 603, in run_forever
+    self._run_once()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/base_events.py", line 1909, in _run_once
+    handle._run()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "/teamspace/studios/this_studio/Agentic-Workflow-LLM-Misinformation/scratch/main_async.py", line 167, in main
+    record = await process_sample(idx, sample)
+  File "/teamspace/studios/this_studio/Agentic-Workflow-LLM-Misinformation/scratch/main_async.py", line 115, in process_sample
+    branches = await asyncio.gather(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/runners.py", line 44, in run
+    return loop.run_until_complete(main)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/base_events.py", line 636, in run_until_complete
+    self.run_forever()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/base_events.py", line 603, in run_forever
+    self._run_once()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/base_events.py", line 1909, in _run_once
+    handle._run()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/asyncio/events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+  File "/teamspace/studios/this_studio/Agentic-Workflow-LLM-Misinformation/scratch/main_async.py", line 85, in generate_branch
+    question, ok_q = q_tool.run(mr.get())
+  File "/teamspace/studios/this_studio/Agentic-Workflow-LLM-Misinformation/scratch/qa_gen.py", line 165, in run
+    resp = _get_chain(prompt, llm).invoke(variables)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_core/runnables/base.py", line 3046, in invoke
+    input_ = context.run(step.invoke, input_, config)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 395, in invoke
+    self.generate_prompt(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 980, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 799, in generate
+    self._generate_with_cache(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_core/language_models/chat_models.py", line 1045, in _generate_with_cache
+    result = self._generate(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_google_genai/chat_models.py", line 961, in _generate
+    response: GenerateContentResponse = _chat_with_retry(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_google_genai/chat_models.py", line 196, in _chat_with_retry
+    return _chat_with_retry(**kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/tenacity/__init__.py", line 338, in wrapped_f
+    return copy(f, *args, **kw)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/tenacity/__init__.py", line 477, in __call__
+    do = self.iter(retry_state=retry_state)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/tenacity/__init__.py", line 378, in iter
+    result = action(retry_state)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/tenacity/__init__.py", line 400, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/concurrent/futures/_base.py", line 451, in result
+    return self.__get_result()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/concurrent/futures/_base.py", line 403, in __get_result
+    raise self._exception
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/tenacity/__init__.py", line 480, in __call__
+    result = fn(*args, **kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/langchain_google_genai/chat_models.py", line 178, in _chat_with_retry
+    return generation_method(**kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/client.py", line 835, in generate_content
+    response = rpc(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/api_core/gapic_v1/method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/api_core/retry/retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/api_core/retry/retry_unary.py", line 147, in retry_target
+    result = target()
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/api_core/timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/api_core/grpc_helpers.py", line 76, in error_remapped_callable
+    return callable_(*args, **kwargs)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/grpc/_interceptor.py", line 277, in __call__
+    response, ignored_call = self._with_call(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/grpc/_interceptor.py", line 329, in _with_call
+    call = self._interceptor.intercept_unary_unary(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/google/ai/generativelanguage_v1beta/services/generative_service/transports/grpc.py", line 79, in intercept_unary_unary
+    response = continuation(client_call_details, request)
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/grpc/_interceptor.py", line 315, in continuation
+    response, call = self._thunk(new_method).with_call(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/grpc/_channel.py", line 1189, in with_call
+    state, call = self._blocking(
+  File "/home/zeus/miniconda3/envs/cloudspace/lib/python3.10/site-packages/grpc/_channel.py", line 1162, in _blocking
+    event = call.next_event()
+  File "src/python/grpcio/grpc/_cython/_cygrpc/channel.pyx.pxi", line 388, in grpc._cython.cygrpc.SegregatedCall.next_event
+  File "src/python/grpcio/grpc/_cython/_cygrpc/channel.pyx.pxi", line 211, in grpc._cython.cygrpc._next_call_event
+  File "src/python/grpcio/grpc/_cython/_cygrpc/channel.pyx.pxi", line 205, in grpc._cython.cygrpc._next_call_event
+  File "src/python/grpcio/grpc/_cython/_cygrpc/completion_queue.pyx.pxi", line 97, in grpc._cython.cygrpc._latent_event
+  File "src/python/grpcio/grpc/_cython/_cygrpc/completion_queue.pyx.pxi", line 80, in grpc._cython.cygrpc._internal_latent_event
+  File "src/python/grpcio/grpc/_cython/_cygrpc/completion_queue.pyx.pxi", line 61, in grpc._cython.cygrpc._next
+KeyboardInterrupt
+2025-08-06 23:25:22      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-06 23:26:49   WARNING  Batch selector failed, falling back: 'Input to ChatPromptTemplate is missing variables {\'\\n    "branch"\'}.  Expected: [\'\\n    "branch"\', \'branches_block\'] Received: [\'branches_block\']\nNote: if you intended {\n    "branch"} to be part of the string and not a variable, please escape it with double curly braces like: \'{{\n    "branch"}}\'.\nFor troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/INVALID_PROMPT_INPUT '

@@ -54,9 +54,17 @@ _PROMPT_TMPL = ChatPromptTemplate.from_messages(
 # --------------------------------------------------------------------------- #
 
 
-@memo(maxsize=32)
-def _get_chain(llm):
-    return _PROMPT_TMPL | llm
+# ADD near the top of each module
+from cachetools import LRUCache
+_CHAIN_CACHE = LRUCache(maxsize=32)
+
+def _get_chain(prompt_obj, llm):
+    """Return a compiled (prompt | llm) chain, caching on object IDs."""
+    key = (id(prompt_obj), id(llm))
+    if key not in _CHAIN_CACHE:
+        _CHAIN_CACHE[key] = prompt_obj | llm
+    return _CHAIN_CACHE[key]
+
 
 
 # --------------------------------------------------------------------------- #
@@ -88,7 +96,7 @@ def answer_from_evidence(
     evidence_text = "\n".join(f"- {s}" for s in snippets or []) or "No evidence."
 
     try:
-        resp = _get_chain(llm).invoke({"evidence": evidence_text, "question": question})
+        resp = _get_chain(_PROMPT_TMPL,llm).invoke({"evidence": evidence_text, "question": question})
     except Exception as exc:  # noqa: BLE001
         return f"answer-llm error: {exc}", False
 
