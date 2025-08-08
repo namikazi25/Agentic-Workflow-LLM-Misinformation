@@ -1,29 +1,29 @@
 """
-scratch/brave_client.py
-=======================
+scratch/brave_client.py – improved Brave Search wrapper
+=======================================================
 
-Asynchronous thin-wrapper around the **Brave Search API** that returns a list
-of result snippets (`str`).  Designed to be called from coroutines in
-`webqa.py`, but a synchronous helper is provided for quick debugging /
-unit-tests.
+Changes versus the first rewrite
+--------------------------------
+1. **Quality‑aware post‑filtering**
+   • After fetching raw results we compute a simple keyword‑overlap score
+     between the *question* and each *snippet* (stop‑words removed).
+   • Snippets that score **0** or look like obvious shopping / spam ads are
+     discarded.
+   • The top‑scoring *k* snippets are returned.
 
-Key features
-------------
+2. **Adaptive widening**
+   • If the first call (count = 20) yields **< k usable snippets**, we retry
+     once with `count = 50` to fish for long‑tail hits.
 
-* **Async I/O** (`aiohttp`)  – dozens of queries in flight.
-* **Retry with back-off** (`tenacity`) on network / 429 errors.
-* **TTL LRU cache**         – avoids duplicate queries within the same run.
-* **Pure snippets**         – no LLM summarisation to prevent hallucinations.
+3. **Structured return for debugging**
+   • When `DEBUG=True` in `config.py`, we log how many snippets were fetched,
+     filtered, and returned (helps monitor search health).
 
-Environment
------------
+Public contract remains **identical**:
 
-You must set **one** of:
+>>> snippets = await brave_snippets("What is AI?", k=8)
 
-* ``BRAVE_SEARCH_API_KEY``   – official env‐var name  
-* ``SEARCH_API``             – fallback key expected by older code
-
-If both are absent, an informative `RuntimeError` is raised.
+The synchronous helper `brave_snippets_sync` is preserved.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import List
 
 import aiohttp
@@ -46,72 +47,102 @@ BRAVE_KEY: str | None = os.getenv("BRAVE_SEARCH_API_KEY") or os.getenv("SEARCH_A
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
-# Async snippet fetcher
+# Minimal stop‑word list (hard‑coded to avoid extra deps)
+# --------------------------------------------------------------------------- #
+_STOP = {
+    "the", "a", "an", "and", "or", "but", "on", "in", "at", "to", "of", "for",
+    "with", "by", "about", "is", "are", "was", "were", "be", "been", "being",
+    "this", "that", "these", "those", "it", "its", "as", "from", "into", "than",
+}
+
+_SPAM_PAT = re.compile(r"\b(?:buy|shop|sale|price|discount|free shipping)\b", re.I)
+
+
+# --------------------------------------------------------------------------- #
+# Helper: score snippet quality given the question tokens
 # --------------------------------------------------------------------------- #
 
+def _tokenise(text: str) -> set[str]:
+    return {tok.lower() for tok in re.findall(r"[A-Za-z0-9]+", text) if tok.lower() not in _STOP}
 
-@retry(
-    stop=stop_after_attempt(3),            # max 3 tries
-    wait=wait_exponential(multiplier=1.2), # 1.2, 2.4, 4.8 sec …
-    reraise=True,
-)
+
+def _score_snippet(q_tokens: set[str], snippet: str) -> int:
+    if _SPAM_PAT.search(snippet):
+        return 0  # auto‑discard spammy looking ads
+    s_tokens = _tokenise(snippet)
+    return len(q_tokens & s_tokens)
+
+
+# --------------------------------------------------------------------------- #
+# Async snippet fetcher with quality filtering
+# --------------------------------------------------------------------------- #
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1.2), reraise=True)
 async def brave_snippets(query: str, *, k: int = C.BRAVE_K) -> List[str]:
-    """
-    Coroutine that returns up to *k* snippets for *query*.
+    """Return up to *k* **high‑quality** Brave snippets for *query*."""
+    if not BRAVE_KEY:
+        raise RuntimeError("Brave API key not found – set BRAVE_SEARCH_API_KEY or SEARCH_API.")
 
-    Results are cached for `config.CACHE_TTL_SEC` seconds in memory.
-    """
-    # ----------------- cache hit ----------------- #
+    # --- cache hit -------------------------------------------------- #
     hit = ttl_get(NET_CACHE, query)
     if hit is not None:
         return hit[:k]
 
-    # ----------------- API call ------------------ #
-    if not BRAVE_KEY:
-        raise RuntimeError(
-            "Brave API key not found.  "
-            "Set BRAVE_SEARCH_API_KEY or SEARCH_API in your environment."
-        )
+    q_tokens = _tokenise(query)
 
-    headers = {
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip",
-        "X-Subscription-Token": BRAVE_KEY,
-    }
-    params = {"q": query, "count": k}
+    async def _fetch(count: int) -> List[dict]:
+        headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": BRAVE_KEY,
+        }
+        params = {"q": query, "count": count}
+        async with async_timeout.timeout(10):
+            async with aiohttp.ClientSession() as sess:
+                async with sess.get(BRAVE_ENDPOINT, params=params, headers=headers) as r:
+                    r.raise_for_status()
+                    data = await r.json()
+                    return data.get("web", {}).get("results", [])
 
-    async with async_timeout.timeout(10):            # network timeout
-        async with aiohttp.ClientSession() as sess:
-            async with sess.get(BRAVE_ENDPOINT, params=params, headers=headers) as r:
-                r.raise_for_status()
-                data = await r.json()
+    # 1️⃣  first attempt (count=20) ---------------------------------- #
+    raw_results = await _fetch(20)
 
-    # ----------------- parse --------------------- #
-    snippets: List[str] = [
-        (res.get("description") or res.get("title") or "").strip()
-        for res in data.get("web", {}).get("results", [])
-        if (res.get("description") or res.get("title"))
-    ]
+    # 2️⃣  optional widen (count=50) if needed ----------------------- #
+    if len(raw_results) < k:
+        raw_results += await _fetch(50)
 
-    # ----------------- cache store --------------- #
+    # 3️⃣  extract + score ------------------------------------------ #
+    scored: List[tuple[int, str]] = []
+    for res in raw_results:
+        text = (res.get("description") or res.get("title") or "").strip()
+        if not text:
+            continue
+        score = _score_snippet(q_tokens, text)
+        if score == 0:
+            continue  # drop uninformative or spam
+        scored.append((score, text))
+
+    # Sort high‑to‑low score then by original order stability
+    scored.sort(key=lambda t: (-t[0], raw_results.index(next(r for r in raw_results if (r.get("description") or r.get("title") or "").strip() == t[1]))))
+
+    snippets = [txt for _, txt in scored][:k]
+
+    # 4️⃣  cache + debug log ----------------------------------------- #
     ttl_set(NET_CACHE, query, snippets)
 
-    # Log if no results (helps debugging selector failures)
-    if not snippets:
-        logger.debug("Brave returned 0 snippets for query %r", query)
+    if C.DEBUG:
+        logger.info(
+            "Brave: fetched %d, kept %d (requested %d) for query=%r",
+            len(raw_results), len(snippets), k, query[:80],
+        )
 
-    return snippets[:k]
+    return snippets
 
 
 # --------------------------------------------------------------------------- #
-# Synchronous convenience wrapper
+# Sync wrapper for tests / REPL
 # --------------------------------------------------------------------------- #
-
 
 def brave_snippets_sync(query: str, *, k: int = C.BRAVE_K) -> List[str]:
-    """
-    Blocking helper for REPL / tests:
-
-    >>> brave_snippets_sync("What is AI?", k=5)
-    """
+    """Blocking helper (runs the async coroutine internally)."""
     return asyncio.run(brave_snippets(query, k=k))

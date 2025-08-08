@@ -1,29 +1,21 @@
 """
-scratch/context_gen.py
-======================
+scratch/context_gen.py – resilient multimodal event context generator
+=====================================================================
 
-Multimodal **EventContextGenerator** – builds a concise *event report*
-from a news *headline* **and** its *image*.
+Upgrades
+--------
+1. **Robust JSON enforcement**
+   • First call uses the original prompt.
+   • If JSON parsing fails, we **retry once** with a stricter variant of the
+     system prompt and `temperature = 0` to encourage deterministic output.
 
-The LLM is instructed to:
+2. **Transparent logging**
+   • Parsing errors are logged at *WARNING* once per (headline, image).
+   • Retry success/failure is logged at *INFO* when `config.DEBUG` is True.
 
-1. Write a 3-4 sentence **SUMMARY** describing *what*, *who*, *when*,
-   *where*, *why* (only using visual + headline evidence).
-2. Output a compact **JSON** block with the same facts
-   (keys: "headline_restated", "entities", "date_time", "location",
-   "action", "cause", "open_questions").
-
-Return value
-------------
-
->>> raw_text, report_dict = generator.run()
-
-* `raw_text`     – full LLM response (str)
-* `report_dict`  – parsed JSON + `"summary"` key
-                   (empty `{}` if parsing failed)
-
-The method is **memoised** so any (headline, image) pair is processed
-at most once per run.
+3. **Same public API & memoisation**
+   • `run() → (raw_text, report_dict)` signature unchanged.
+   • Results are still cached via `@memo` so downstream callers see no change.
 """
 
 from __future__ import annotations
@@ -35,15 +27,16 @@ from typing import Any, Dict, Tuple
 
 from .cache import memo
 from .model_router import ModelRouter
+from . import config as C
 
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------- #
-# Constants
+# Base and strict prompts
 # --------------------------------------------------------------------------- #
 
-_SYSTEM_PROMPT = textwrap.dedent(
-    """\
+_BASE_PROMPT = textwrap.dedent(
+    """
     You are an investigative fact-checker.
 
     TASK 1 — SUMMARY (3-4 sentences)
@@ -72,62 +65,77 @@ _SYSTEM_PROMPT = textwrap.dedent(
     """
 )
 
-# --------------------------------------------------------------------------- #
-# Generator class
-# --------------------------------------------------------------------------- #
+# Strict prompt adds one extra instruction to maximise parseability
+_STRICT_PROMPT = _BASE_PROMPT + textwrap.dedent(
+    """
 
+    IMPORTANT: The JSON must be valid, single-line, and parseable by Python's
+    json.loads().  Do NOT wrap it in triple backticks or markdown fences.
+    """
+)
+
+# --------------------------------------------------------------------------- #
+# Main class
+# --------------------------------------------------------------------------- #
 
 class EventContextGenerator:
     def __init__(self, headline: str, image_path: str, model_router: ModelRouter):
-        self.headline = headline
+        self.headline = headline.strip()
         self.image_path = image_path
         self._mr = model_router
 
     # ------------------------------------------------------------------ #
-    # Cached public entry
-    # ------------------------------------------------------------------ #
-
-    @memo(maxsize=2_048)  # (headline, image_path) ↔ result
+    @memo(maxsize=2_048)
     def run(self) -> Tuple[str, Dict[str, Any]]:
-        """
-        Returns
-        -------
-        raw_text : str
-            Full LLM output (summary + JSON).
-        report   : dict
-            Parsed JSON plus always a `"summary"` key.  Empty dict if parsing
-            failed.
-        """
-        logger.debug("Generating event context for: %s", self.headline[:60])
+        """Return (raw_text, report_dict) with graceful retry on JSON fail."""
+        raw, report = self._invoke(_BASE_PROMPT)
 
-        # Build multimodal message via ModelRouter helper
+        if report:  # JSON parsed fine first try
+            return raw, report
+
+        # Retry once with stricter prompt + deterministic temperature
+        logger.warning("EventContext: JSON parse failed – retrying with strict mode for headline: %.60s…", self.headline)
+        # Temporarily switch temperature to 0 for determinism
+        orig_temp = self._mr.temperature if hasattr(self._mr, "temperature") else C.TEMPERATURE
+        try:
+            self._mr.switch_model(self._mr.model_name, temperature=0.0)
+            raw2, report2 = self._invoke(_STRICT_PROMPT)
+        finally:
+            # Restore original temperature regardless of success
+            self._mr.switch_model(self._mr.model_name, temperature=orig_temp)
+
+        if C.DEBUG:
+            logger.info("EventContext retry success=%s for headline: %.60s…", bool(report2), self.headline)
+
+        return (raw2, report2) if report2 else (raw, report)  # fall back to first raw if still bad
+
+    # ------------------------------------------------------------------ #
+    def _invoke(self, system_prompt: str) -> Tuple[str, Dict[str, Any]]:
+        """Helper that calls the LLM once and attempts JSON extraction."""
         try:
             resp = self._mr.call_multimodal(
-                system_prompt=_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 text_prompt=self.headline,
                 image_path=self.image_path,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.error("Event context generation failed: %s", exc, exc_info=False)
+            logger.error("Event context LLM error: %s", exc, exc_info=False)
             return f"API Error: {exc}", {}
 
-        raw = getattr(resp["raw"], "content", "") if resp else ""
-        raw = raw.strip()
+        raw = getattr(resp["raw"], "content", "").strip() if resp else ""
 
-        # ------------------ JSON parsing ------------------ #
         summary = raw
         report: Dict[str, Any] = {}
 
         if "JSON:" in raw:
             summary_part, json_part = raw.split("JSON:", 1)
             summary = summary_part.replace("SUMMARY:", "").strip()
-
             try:
                 report = json.loads(json_part.strip())
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to parse JSON block (%s)", exc)
+                if C.DEBUG:
+                    logger.debug("EventContext JSON parse error: %s", exc)
+                report = {}
 
-        # Always include the narrative summary
-        report["summary"] = summary
-
+        report["summary"] = summary  # always include summary narrative
         return raw, report

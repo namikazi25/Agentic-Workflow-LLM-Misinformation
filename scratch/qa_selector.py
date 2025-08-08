@@ -1,30 +1,24 @@
-
 """
-scratch/qa_selector.py
-======================
+scratch/qa_selector.py – quality‑aware Q‑A selection
+====================================================
 
-Step-05 logic: choose the *single most useful* Q-A pair from one or more
-branches.
+Key upgrades
+------------
+1. **Bad‑pair filtering**
+   • Pairs whose `ok` flag is *False* **or** whose answer begins with
+     “No relevant answer found.”/“Insufficient evidence” are excluded *before*
+     we even ask the LLM to choose.  If a branch has zero good pairs we return
+     an empty dict so the final classifier can recognise missing evidence.
 
-  • **QASelector** – keeps backward-compat signature (`run()` per branch).  
-  • **batch_select** – NEW helper that selects the best pair *for every
-    branch* with one LLM round-trip.
+2. **Length sanity check**
+   • Answers shorter than 15 characters are considered low‑quality and
+     filtered.
 
-Both helpers parse the LLM response; if parsing fails they fall back to the
-*first Q-A* in the branch.
+3. **Cleaner fallbacks**
+   • When the selection prompt fails, we now fall back to the *first good*
+     pair (if any) instead of the first raw pair.
 
-Returned Q-A dict structure
----------------------------
-
-{
-"question": <str>,
-"answer": <str>,
-"snippets": <list[str]> | None # optional; propagated unmodified
-}
-
-perl
-Copy
-Edit
+Public API (`QASelector`, `batch_select`) remains unchanged.
 """
 
 from __future__ import annotations
@@ -37,14 +31,36 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from .cache import memo
-
 logger = logging.getLogger(__name__)
 
 __all__ = ["QASelector", "batch_select"]
 
 # --------------------------------------------------------------------------- #
-# Prompt templates
+# Utility: assess QA quality
+# --------------------------------------------------------------------------- #
+
+_BAD_SENTINELS = (
+    "no relevant answer found",
+    "insufficient evidence",
+    "brave error",
+)
+
+
+def _is_good(qa: Dict[str, Any]) -> bool:
+    if not qa or not qa.get("question") or not qa.get("answer"):
+        return False
+    if not qa.get("ok", True):
+        return False
+    ans = qa["answer"].strip().lower()
+    if any(ans.startswith(s) for s in _BAD_SENTINELS):
+        return False
+    if len(ans) < 15:  # too short to be useful
+        return False
+    return True
+
+
+# --------------------------------------------------------------------------- #
+# Prompt templates (unchanged except variable names)
 # --------------------------------------------------------------------------- #
 
 _PROMPT_SINGLE = ChatPromptTemplate.from_messages(
@@ -52,15 +68,12 @@ _PROMPT_SINGLE = ChatPromptTemplate.from_messages(
         (
             "system",
             textwrap.dedent(
-                """\
-                You are a fact-checking analyst.  Below are several Q-A pairs
-                generated to verify a news headline.
+                """
+                You are a fact‑checking analyst.  Below are several candidate
+                Q‑A pairs.  Choose the **single most informative** pair to help
+                verify the headline.
 
-                Select the **one** pair that best helps decide whether the
-                headline is true or false.
-
-                Return ONLY the chosen pair in exactly this format:
-
+                Return ONLY that pair in the format:
                 Question: <text>
                 Answer:   <text>
                 """
@@ -75,21 +88,12 @@ _PROMPT_MULTI = ChatPromptTemplate.from_messages(
         (
             "system",
             textwrap.dedent(
-                """\
-                You are a fact-checking analyst.
+                """
+                You are a fact‑checking analyst.
 
-                For EACH branch shown below, pick the **single best** Q-A pair
-                (the one most helpful for verifying the headline).
-
-                Output a single-line JSON array; each element must have:
-
-                  {{
-                    "branch":   <int>,     // 1-based branch index
-                    "question": <text>,
-                    "answer":   <text>
-                  }}
-
-                Do NOT include any keys besides the three above.
+                For EACH branch, select the **single best** Q‑A pair.
+                Output a one‑line JSON array where each element is:
+                {"branch": <int>, "question": <text>, "answer": <text>}
                 """
             ),
         ),
@@ -98,15 +102,15 @@ _PROMPT_MULTI = ChatPromptTemplate.from_messages(
 )
 
 # --------------------------------------------------------------------------- #
-# Chain-level cache
+# Chain cache
 # --------------------------------------------------------------------------- #
 
-
 from cachetools import LRUCache
-_CHAIN_CACHE = LRUCache(maxsize=32)
+
+_CHAIN_CACHE: LRUCache = LRUCache(maxsize=32)
+
 
 def _get_chain(prompt_obj, llm):
-    """Return a compiled (prompt | llm) chain, caching on object IDs."""
     key = (id(prompt_obj), id(llm))
     if key not in _CHAIN_CACHE:
         _CHAIN_CACHE[key] = prompt_obj | llm
@@ -114,22 +118,16 @@ def _get_chain(prompt_obj, llm):
 
 
 # --------------------------------------------------------------------------- #
-# Public helpers
+# Single‑branch selector
 # --------------------------------------------------------------------------- #
 
-
 class QASelector:
-    """
-    Backward-compat wrapper (single branch).
+    """Select the best Q‑A pair from *one* branch, with quality filtering."""
 
-    Example
-    -------
-    >>> sel = QASelector(branch_qa)
-    >>> best, ok = sel.run(llm)
-    """
-
-    def __init__(self, qa_pairs: List[Dict[str, Any]]) -> None:
-        self.qa_pairs = qa_pairs
+    def __init__(self, qa_pairs: List[Dict[str, Any]]):
+        # Store original + also build filtered view
+        self._orig_pairs = qa_pairs
+        self.qa_pairs = [qa for qa in qa_pairs if _is_good(qa)]
 
     def _format_block(self) -> str:
         return "\n---\n".join(
@@ -137,11 +135,9 @@ class QASelector:
         )
 
     # -------------------------------------------------------------- #
-    # Main
-    # -------------------------------------------------------------- #
     def run(self, llm) -> Tuple[Optional[Dict[str, Any]], bool]:
         if not self.qa_pairs:
-            return None, True
+            return None, False  # nothing usable
 
         prompt_vars = {"qa_block": self._format_block()}
 
@@ -152,28 +148,27 @@ class QASelector:
             logger.error("Selector LLM failed: %s", exc, exc_info=False)
             return self.qa_pairs[0], False
 
-        # crude extraction
         q_match = re.search(r"Question:\s*(.+)", txt, re.I)
         a_match = re.search(r"Answer:\s*(.+)", txt, re.I | re.S)
         if q_match and a_match:
-            question = q_match.group(1).strip()
-            answer = a_match.group(1).strip()
-            # keep snippets if they exist (copy from first match)
-            return {"question": question, "answer": answer, "snippets": None}, True
+            return {
+                "question": q_match.group(1).strip(),
+                "answer": a_match.group(1).strip(),
+                "snippets": None,
+            }, True
 
         return self.qa_pairs[0], False
 
 
 # --------------------------------------------------------------------------- #
-# Batch selection for all branches
+# Batch selector (multi‑branch)
 # --------------------------------------------------------------------------- #
 
-
 def _format_branches(branches: List[List[Dict[str, Any]]]) -> str:
-    """Convert branches → text block for the prompt."""
-    blocks: List[str] = []
+    blocks = []
     for idx, branch in enumerate(branches, start=1):
-        body = "\n".join(f"Q: {qa['question']}\nA: {qa['answer']}" for qa in branch)
+        goods = [qa for qa in branch if _is_good(qa)]
+        body = "\n".join(f"Q: {qa['question']}\nA: {qa['answer']}" for qa in goods)
         blocks.append(f"BRANCH {idx}:\n{body}")
     return "\n\n".join(blocks)
 
@@ -182,52 +177,43 @@ def batch_select(
     qa_branches: List[List[Dict[str, Any]]],
     llm,
 ) -> List[Dict[str, Any]]:
-    """
-    Parameters
-    ----------
-    qa_branches
-        List of branches; each branch is a list of Q-A dicts.
-    llm
-        LangChain LLM instance.
-
-    Returns
-    -------
-    best_pairs
-        List with one *selected* Q-A dict per branch (same order).
-    """
     if not qa_branches:
         return []
 
-    # fall back quickly if LLM unavailable
-    if len(qa_branches) == 1:
-        sel, _ = QASelector(qa_branches[0]).run(llm)
-        return [sel]
+    # Filter each branch first; keep empty lists if all bad
+    filtered = [[qa for qa in br if _is_good(qa)] for br in qa_branches]
 
-    prompt_vars = {"branches_block": _format_branches(qa_branches)}
+    # Fast path: single branch
+    if len(filtered) == 1:
+        sel, _ = QASelector(filtered[0]).run(llm) if filtered[0] else (None, False)
+        return [sel or {}]
+
+    if all(not br for br in filtered):
+        # All branches empty → no evidence
+        return [{} for _ in qa_branches]
+
+    prompt_vars = {"branches_block": _format_branches(filtered)}
 
     try:
         resp = _get_chain(_PROMPT_MULTI, llm).invoke(prompt_vars)
         txt = resp.content if hasattr(resp, "content") else str(resp)
-        # Expect single-line JSON
         parsed = json.loads(txt.strip())
     except Exception as exc:  # noqa: BLE001
         logger.warning("Batch selector failed, falling back: %s", exc)
-        return [branch[0] if branch else {} for branch in qa_branches]
+        return [br[0] if br else {} for br in filtered]
 
-    # Build output list; default to first if missing
     best: List[Dict[str, Any]] = []
-    for idx, branch in enumerate(qa_branches, start=1):
-        record = next(
-            (x for x in parsed if isinstance(x, dict) and x.get("branch") == idx), None
-        )
-        if record and record.get("question") and record.get("answer"):
+    for idx, orig_branch in enumerate(filtered, start=1):
+        rec = next((r for r in parsed if isinstance(r, dict) and r.get("branch") == idx), None)
+        if rec and rec.get("question") and rec.get("answer"):
             best.append(
                 {
-                    "question": record["question"].strip(),
-                    "answer": record["answer"].strip(),
-                    "snippets": next(iter(branch or [{}]), {}).get("snippets"),
+                    "question": rec["question"].strip(),
+                    "answer": rec["answer"].strip(),
+                    "snippets": None,
                 }
             )
         else:
-            best.append(branch[0] if branch else {})
+            # Fallback: first good pair or empty dict
+            best.append(orig_branch[0] if orig_branch else {})
     return best

@@ -60,7 +60,7 @@ QGEN_STRATEGY: str = "auto"          # headline | report | auto
 # --------------------------------------------------------------------------- #
 
 # Number of snippets to retrieve per query
-BRAVE_K: int = 8
+BRAVE_K: int = 15
 
 # --------------------------------------------------------------------------- #
 # Caching
