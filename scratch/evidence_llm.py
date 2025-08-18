@@ -20,16 +20,34 @@ Enhancements
 The public function signature is **unchanged**:
 
 >>> answer, ok = answer_from_evidence(llm, question, snippets)
+
+scratch/evidence_llm.py – evidence-grounded answering with confidence
+=====================================================================
+
+Changes:
+- Use ModelRouter.call(...) so we get a confidence score.
+- Return (answer, ok, confidence).
+- Keep ≤3 sentence rule and sentinel handling.
+
+scratch/evidence_llm.py – evidence-grounded answering with confidence + headline self-policing
+=============================================================================================
+
+Changes:
+- Accept optional `headline` and post-validate the final answer: if it contains
+  **no tokens** from the headline, mark ok=False (blocks pretty but generic summaries).
+- Keep using ModelRouter.call(...) so we get a confidence score.
+- Return (answer, ok, confidence).
 """
 
 from __future__ import annotations
 
+import re
 from typing import List, Tuple
 
 from langchain_core.prompts import ChatPromptTemplate
 
 # --------------------------------------------------------------------------- #
-# Prompt template
+# Prompt template (unchanged)
 # --------------------------------------------------------------------------- #
 
 _PROMPT_TMPL = ChatPromptTemplate.from_messages(
@@ -37,7 +55,7 @@ _PROMPT_TMPL = ChatPromptTemplate.from_messages(
         (
             "system",
             """
-            You are an evidence‑grounded answer generator.  Follow ALL rules:
+            You are an evidence-grounded answer generator.  Follow ALL rules:
 
             1️⃣  Use ONLY the snippets provided below – do not add outside facts.
             2️⃣  Write **no more than 3 sentences**.
@@ -54,55 +72,67 @@ _PROMPT_TMPL = ChatPromptTemplate.from_messages(
     ]
 )
 
-# --------------------------------------------------------------------------- #
-# Chain cache (prompt × llm) – prevents recompilation overhead
-# --------------------------------------------------------------------------- #
+_BAD_SENTINEL = "no relevant answer found"
 
-from cachetools import LRUCache
-
-_CHAIN_CACHE: LRUCache = LRUCache(maxsize=32)
-
-
-def _get_chain(prompt_obj, llm):
-    key = (id(prompt_obj), id(llm))
-    if key not in _CHAIN_CACHE:
-        _CHAIN_CACHE[key] = prompt_obj | llm
-    return _CHAIN_CACHE[key]
+# Simple tokenization (shared style with other modules)
+_STOP = {
+    "the","a","an","and","or","but","on","in","at","to","of","for",
+    "with","by","about","is","are","was","were","be","been","being",
+    "this","that","these","those","it","its","as","from","into","than",
+}
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 
 
-# --------------------------------------------------------------------------- #
-# Public API
-# --------------------------------------------------------------------------- #
+def _tokens(text: str | None) -> set[str]:
+    if not text:
+        return set()
+    return {t.lower() for t in _TOKEN_RE.findall(text) if t.lower() not in _STOP}
+
 
 def answer_from_evidence(
-    llm,
+    router,                     # ModelRouter instance (not raw llm)
     question: str,
     snippets: List[str] | None,
     *,
+    headline: str | None = None,    # ✅ NEW: for self-policing
     max_chars: int = 400,
-) -> Tuple[str, bool]:
-    """Return a concise, evidence‑grounded answer (answer, ok)."""
+) -> Tuple[str, bool, float]:
+    """Return (answer, ok, confidence).  ok=False if sentinel/too long/empty or no headline overlap."""
 
-    if not snippets:  # empty list or None
-        return "No relevant answer found.", False
+    if not snippets:
+        return "No relevant answer found.", False, 0.0
 
     evidence_text = "\n".join(f"- {s}" for s in snippets)
 
+    # Prepare messages for ModelRouter.call(...)
+    messages = _PROMPT_TMPL.format_prompt(
+        evidence=evidence_text,
+        question=question,
+    ).to_messages()
+
     try:
-        resp = _get_chain(_PROMPT_TMPL, llm).invoke(
-            {"evidence": evidence_text, "question": question}
-        )
+        out = router.call(messages)  # {"raw": resp, "confidence": float}
     except Exception as exc:  # noqa: BLE001
-        return f"answer-llm error: {exc}", False
+        return f"answer-llm error: {exc}", False, 0.0
+
+    resp = out.get("raw")
+    conf = float(out.get("confidence", 0.5))
 
     answer = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
 
-    # Basic validation – sentinel already handled but keep safety net
+    ok = True
     if (
         not answer
-        or answer.lower().startswith("no relevant answer found")
+        or answer.lower().startswith(_BAD_SENTINEL)
         or len(answer) > max_chars
     ):
-        return answer, False
+        ok = False
 
-    return answer, True
+    # ✅ Self-police: the final answer must include ≥1 token/entity from the headline
+    if ok and headline:
+        ans_t = _tokens(answer)
+        head_t = _tokens(headline)
+        if len(ans_t & head_t) < 1:
+            ok = False  # fails entity/token anchoring to the claim
+
+    return answer, ok, conf

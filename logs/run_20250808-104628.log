@@ -1,0 +1,39 @@
+2025-08-08 10:46:28      INFO  Logging to logs/run_20250808-104628.log
+2025-08-08 10:46:28      INFO  Pipeline start – 10 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-08 10:48:08      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:48:11      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:49:57      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:51:59      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:51:59      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:51:59      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:52:57   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+glowing,+rainbow-colored+frisbee+a+real+object+or+a+digital+effect?&count=50'
+2025-08-08 10:53:11   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+image+of+the+young+man+with+the+frisbee+set+at+sunrise+or+sunset?&count=50'
+2025-08-08 10:53:28   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+image+of+the+young+man+with+the+glowing+frisbee+a+photograph+or+digital+art?&count=50'
+2025-08-08 10:55:04      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:55:04      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:56:14   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Where+is+the+factory+that+produces+150,000+meters+of+tinsel+per+day?&count=50&freshness=py'
+2025-08-08 10:56:35   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+150,000m+tinsel+output+for+a+specific+holiday+season?&count=50&freshness=py'
+2025-08-08 10:57:49   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+floating+above+a+street+with+a+small+bus+real?&count=50'
+2025-08-08 10:57:58   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+floating+above+a+street+a+physical+object+or+a+digital+image?&count=50'
+2025-08-08 10:58:10   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+floating+above+a+street+with+a+small+bus+part+of+a+film+production?&count=50'
+2025-08-08 10:58:11   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+floating+above+a+street+part+of+a+parade+or+festival+in+an+urban+setting?&count=50'
+2025-08-08 10:58:18   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+floating+above+a+street+a+form+of+advertising+in+an+urban+setting?&count=50'
+2025-08-08 10:58:28   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+floating+above+a+street+a+balloon?&count=50'
+2025-08-08 10:58:29   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Where+is+the+large+snake+floating+above+a+street+with+a+small+bus?&count=50'
+2025-08-08 10:58:29      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:58:29      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:58:29      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:59:53   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Could+sunlight+interacting+with+substances+in+a+bathroom+sink+create+the+appearance+of+winged+foam?&count=50'
+2025-08-08 11:00:08   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+specific+properties+of+foam+allow+it+to+form+stable,+winged+shapes+in+a+bathroom+sink?&count=50'
+2025-08-08 11:00:08      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 11:00:08      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 11:00:08      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 11:01:15   WARNING  Brave error: 
+2025-08-08 11:01:53      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 11:01:53      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 11:03:40      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 11:03:43      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 11:04:01      INFO  Results written to results/step08_async.jsonl
+2025-08-08 11:04:01      INFO  Running quick in-memory evaluation …
+2025-08-08 11:04:01      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=62  brave_error=15

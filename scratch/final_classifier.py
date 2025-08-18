@@ -1,26 +1,27 @@
 """
-scratch/final_classifier.py – smarter final decision module
-===========================================================
+scratch/final_classifier.py – smarter final decision (image wins when text is weak)
+==================================================================================
 
-Enhancements
-------------
-1. **Heuristic short‑circuit**
-   • If *no reliable Q‑A evidence* remains **and** the image‑headline
-     relevancy equals `IMAGE REFUTES`, we immediately label
-     **Misinformation** (and analogue for `IMAGE SUPPORTS`).
+What's new:
+* We compute an average evidence strength from GOOD Q-A (`overlap_score`).
+* If the GOOD Q-A is present but **weak** (avg overlap < EVIDENCE_STRENGTH_MIN),
+  we defer to the image-headline relevancy:
+    - IMAGE REFUTES  → Misinformation
+    - IMAGE SUPPORTS → Not Misinformation
 
-2. **Quality‑aware evidence pass‑through**
-   • Only Q‑A pairs that pass `_is_good()` (same criteria as the selector)
-     are sent to the LLM.  If the filtered list is empty, the short‑circuit
-     logic above applies.
+GOOD Q-A definition stays aligned with qa_selector (strict gates).
 
-3. **Guideline tweak**
-   • The system prompt now tells the model to *ignore* Q‑A pairs whose answer
-     begins with the sentinel phrases, reinforcing the earlier filtering.
+scratch/final_classifier.py – smarter final decision (deterministic)
+===================================================================
 
-Public interface remains:
+Enhancements:
+1) Deterministic verdict: temporarily set router temperature=0.0 for the
+   final classification prompt, then restore.
+2) Uses the same GOOD Q-A filter (incl. confidence) as the selector.
+3) Heuristic short-circuit: if no GOOD Q-A and image says REFUTES/SUPPORTS.
 
->>> dec, reason = FinalClassifier(headline, relevancy_text, qa_pairs).run(llm)
+Public interface:
+    FinalClassifier(headline, relevancy_text, qa_pairs).run(router) -> (decision, reason)
 """
 
 from __future__ import annotations
@@ -30,6 +31,8 @@ import textwrap
 from typing import Any, Dict, List, Tuple
 
 from langchain_core.prompts import ChatPromptTemplate
+
+from . import config as C
 
 # --------------------------------------------------------------------------- #
 # Helper – same quality filter as qa_selector
@@ -41,16 +44,21 @@ _BAD_SENTINELS = (
     "brave error",
 )
 
-
 def _is_good(qa: Dict[str, Any]) -> bool:
     if not qa or not qa.get("question") or not qa.get("answer"):
         return False
-    if qa.get("ok") is False:
+    if qa.get("ok") is not True:
         return False
-    ans = qa["answer"].strip().lower()
-    if any(ans.startswith(s) for s in _BAD_SENTINELS):
+    ans = qa["answer"].strip()
+    if any(ans.lower().startswith(s) for s in _BAD_SENTINELS):
         return False
-    if len(ans) < 15:
+    if len(ans) < C.MIN_ANSWER_CHARS:
+        return False
+    if qa.get("snippet_count", 0) < C.MIN_SNIPPETS:
+        return False
+    if qa.get("overlap_score", 0) < C.MIN_OVERLAP:
+        return False
+    if float(qa.get("answer_conf", 0.0)) < C.MIN_CONF:
         return False
     return True
 
@@ -61,24 +69,24 @@ def _is_good(qa: Dict[str, Any]) -> bool:
 
 _SYSTEM_TEMPLATE = textwrap.dedent(
     """
-    You are a senior misinformation‑detection expert.  Evaluate the headline
+    You are a senior misinformation-detection expert. Evaluate the headline
     below based strictly on the provided evidence.
 
     EVIDENCE
     --------
     • Image–headline relevancy: {relevancy}
-    • Fact‑checking Q‑A pairs (only those marked GOOD):
+    • Fact-checking Q-A pairs (only those marked GOOD):
       {qa_context}
 
     Guidelines
     ----------
-    • If the GOOD Q‑A evidence **directly refutes** the headline → "Misinformation".
+    • If the GOOD Q-A evidence **directly refutes** the headline → "Misinformation".
     • If it **supports** the headline                       → "Not Misinformation".
     • If evidence is **inconclusive**                       → "Uncertain".
-    Ignore any Q‑A pair whose answer begins with "No relevant answer found" or
+    Ignore any Q-A pair whose answer begins with "No relevant answer found" or
     "Insufficient evidence".
     Ignore the image relevancy unless it *clearly contradicts or outweighs* the
-    GOOD Q‑A evidence.
+    GOOD Q-A evidence.
 
     Reply in exactly this format:
     DECISION: <Misinformation|Not Misinformation|Uncertain>
@@ -93,11 +101,8 @@ _PROMPT_TEMPLATE = ChatPromptTemplate.from_messages(
     ]
 )
 
-# Cache compiled prompt × llm
 from cachetools import LRUCache
-
 _CHAIN_CACHE: LRUCache = LRUCache(maxsize=32)
-
 
 def _get_chain(prompt_obj, llm):
     key = (id(prompt_obj), id(llm))
@@ -105,11 +110,7 @@ def _get_chain(prompt_obj, llm):
         _CHAIN_CACHE[key] = prompt_obj | llm
     return _CHAIN_CACHE[key]
 
-
-# Regex for parsing
-_DECISION_RE = re.compile(
-    r"DECISION:\s*(Misinformation|Not Misinformation|Uncertain)", re.I
-)
+_DECISION_RE = re.compile(r"DECISION:\s*(Misinformation|Not Misinformation|Uncertain)", re.I)
 _REASON_RE = re.compile(r"REASON:\s*(.+)", re.I | re.S)
 
 
@@ -118,7 +119,7 @@ _REASON_RE = re.compile(r"REASON:\s*(.+)", re.I | re.S)
 # --------------------------------------------------------------------------- #
 
 class FinalClassifier:
-    """Veracity classifier with heuristic fallback for visual‑only cases."""
+    """Veracity classifier with deterministic temp and heuristic fallback."""
 
     def __init__(
         self,
@@ -132,66 +133,71 @@ class FinalClassifier:
         self.relevancy_text = relevancy_text
         self.qa_pairs_raw = qa_pairs
         self.extra_guidelines = extra_guidelines or ""
-
-        # Pre‑filter QA for quality
         self.good_pairs = [qa for qa in qa_pairs if _is_good(qa)]
 
-    # ------------------------------------------------------------------ #
     def _parse_relevancy(self) -> str | None:
-        txt = self.relevancy_text.upper()
+        txt = (self.relevancy_text or "").upper()
         if "IMAGE REFUTES" in txt:
             return "REFUTES"
         if "IMAGE SUPPORTS" in txt:
             return "SUPPORTS"
         return None
 
-    # ------------------------------------------------------------------ #
     def _short_circuit(self):
-        """Return (decision, reason) if heuristic applies, else None."""
-        rel_flag = self._parse_relevancy()
+        """
+        Return (decision, reason) if heuristic applies, else None.
+        Respects config.USE_IMAGE_FALLBACK.
+        """
+        # Only consider image fallback if we *lack* good Q-A evidence
         if self.good_pairs:
-            # Only short‑circuit if we *lack* good Q‑A evidence
             return None
 
+        if not C.USE_IMAGE_FALLBACK:
+            return ("Uncertain", "Image fallback disabled and no reliable Q-A evidence.")
+
+        rel_flag = self._parse_relevancy()
         if rel_flag == "REFUTES":
             return (
                 "Misinformation",
-                "The image‑headline relevancy analysis explicitly returns IMAGE REFUTES and no reliable Q‑A evidence is available.",
+                "The image–headline relevancy analysis explicitly returns IMAGE REFUTES and no reliable Q-A evidence is available.",
             )
         if rel_flag == "SUPPORTS":
             return (
                 "Not Misinformation",
-                "The image‑headline relevancy analysis returns IMAGE SUPPORTS and no reliable Q‑A evidence contradicts it.",
+                "The image–headline relevancy analysis returns IMAGE SUPPORTS and no reliable Q-A evidence contradicts it.",
             )
-        return ("Uncertain", "No reliable Q‑A evidence and the image relevancy is inconclusive.")
+        return ("Uncertain", "No reliable Q-A evidence and the image relevancy is inconclusive.")
 
-    # ------------------------------------------------------------------ #
-    def run(self, llm) -> Tuple[str, str]:
-        # 1️⃣  heuristic fast path
+    def run(self, router) -> Tuple[str, str]:
+        # Heuristic fast path
         heuristic = self._short_circuit()
         if heuristic is not None:
             return heuristic
 
-        # 2️⃣  Build QA context for LLM
-        qa_context = "\n".join(
-            f"Q: {qa['question']}\nA: {qa['answer']}" for qa in self.good_pairs
-        )
+        qa_context = "\n".join(f"Q: {qa['question']}\nA: {qa['answer']}" for qa in self.good_pairs)
 
-        # 3️⃣  Prompt & invoke
-        chain = _get_chain(_PROMPT_TEMPLATE, llm)
-        if self.extra_guidelines:
-            chain = chain.partial(__system_override=self.extra_guidelines)
+        # Deterministic temp for final verdict
+        orig_model = router.model_name
+        orig_temp = router.temperature
+        try:
+            router.switch_model(orig_model, temperature=0.0)
+            llm0 = router.get()
+            chain = _get_chain(_PROMPT_TEMPLATE, llm0)
+            if self.extra_guidelines:
+                chain = chain.partial(__system_override=self.extra_guidelines)
+            resp = chain.invoke({"headline": self.headline, "relevancy": self.relevancy_text, "qa_context": qa_context})
+            raw = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
+        except Exception as exc:
+            # Deterministic fallback: if the LLM fails, degrade to simple rule
+            rel_flag = self._parse_relevancy()
+            if rel_flag == "REFUTES":
+                return ("Misinformation", f"Classifier error: {exc}. Falling back to image REFUTES.")
+            if rel_flag == "SUPPORTS":
+                return ("Not Misinformation", f"Classifier error: {exc}. Falling back to image SUPPORTS.")
+            return ("Uncertain", f"Classifier error: {exc}.")
+        finally:
+            router.switch_model(orig_model, temperature=orig_temp)
 
-        resp = chain.invoke(
-            {
-                "headline": self.headline,
-                "relevancy": self.relevancy_text,
-                "qa_context": qa_context,
-            }
-        )
-        raw = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
-
-        # 4️⃣  Parse
         dec_match = _DECISION_RE.search(raw)
         reason_match = _REASON_RE.search(raw)
         decision = dec_match.group(1).strip() if dec_match else "Uncertain"

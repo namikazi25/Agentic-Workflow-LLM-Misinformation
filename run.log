@@ -241,3 +241,26 @@ KeyboardInterrupt
 2025-08-07 14:19:31   WARNING  Batch selector failed, falling back: 'Input to ChatPromptTemplate is missing variables {\'"branch"\'}.  Expected: [\'"branch"\', \'branches_block\'] Received: [\'branches_block\']\nNote: if you intended {"branch"} to be part of the string and not a variable, please escape it with double curly braces like: \'{{"branch"}}\'.\nFor troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/INVALID_PROMPT_INPUT '
 2025-08-07 14:19:36      INFO  Results written to results/step08_async.jsonl
 2025-08-07 14:19:36      INFO  Running quick in-memory evaluation …
+2025-08-08 10:14:56      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-08 10:16:48      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:16:50      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:18:57      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:18:57      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:18:57      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:20:13   WARNING  Brave error: 
+2025-08-08 10:21:02      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:21:51   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+type+of+frisbee+glows+or+leaves+light+trails?&count=50'
+2025-08-08 10:22:09   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=When+does+golden+hour+typically+occur+for+outdoor+activities+like+frisbee?&count=50'
+2025-08-08 10:22:18   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+glowing+frisbee+and+light+trails+a+result+of+a+photographic+technique?&count=50'
+2025-08-08 10:22:31   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Can+golden+hour+lighting+create+sparkling+effects+around+objects+like+a+frisbee?&count=50'
+2025-08-08 10:23:13      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-08 10:23:13      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:24:14   WARNING  Brave error: 
+2025-08-08 10:24:22   WARNING  Brave error: 
+2025-08-08 10:25:36   WARNING  Brave error: 
+2025-08-08 10:25:41      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-08 10:25:41      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-08 10:25:54      INFO  Results written to results/step08_async.jsonl
+2025-08-08 10:25:54      INFO  Running quick in-memory evaluation …
+2025-08-08 10:25:54      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=31  brave_error=8
