@@ -58,7 +58,7 @@ _PROMPT_TMPL = ChatPromptTemplate.from_messages(
             You are an evidence-grounded answer generator.  Follow ALL rules:
 
             1️⃣  Use ONLY the snippets provided below – do not add outside facts.
-            2️⃣  Write **no more than 3 sentences**.
+            2️⃣  Write **3–6 sentences** (aim for 80–200 words).
             3️⃣  If the evidence is insufficient or contradictory, reply EXACTLY:
                 No relevant answer found.
             4️⃣  Each sentence must be traceable to at least one snippet; if not,
@@ -126,7 +126,7 @@ def answer_from_evidence(
     snippets: List[str] | None,
     *,
     headline: str | None = None,    # ✅ NEW: for self-policing
-    max_chars: int = 400,
+    max_chars: int = 1000,
 ) -> Tuple[str, bool, float]:
     """Return (answer, ok, confidence).  ok=False if sentinel/too long/empty or no headline overlap."""
 

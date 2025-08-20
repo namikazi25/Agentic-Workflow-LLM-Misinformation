@@ -1,0 +1,8 @@
+2025-08-20 14:37:56      INFO  Logging to logs/run_20250820-143756.log
+2025-08-20 14:37:56      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 14:37:56      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-20 14:37:57      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 14:37:57      INFO  Pipeline start – 10 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-20 14:44:25      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 14:47:12      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 14:47:12      INFO  Branch 1 has no GOOD Q-A pairs.

@@ -97,7 +97,7 @@ MIN_SNIPPETS: int = 3
 MIN_OVERLAP: int = 1
 
 # Minimum answer length to avoid fluffy one-liners
-MIN_ANSWER_CHARS: int = 40
+MIN_ANSWER_CHARS: int = 35
 
 MIN_CONF: float = 0.30         
 # When average overlap of GOOD Q-A is below this, treat text evidence as weak

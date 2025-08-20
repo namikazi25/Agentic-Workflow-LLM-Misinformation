@@ -23,7 +23,8 @@ import asyncio
 import logging
 import os
 import re
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
+from urllib.parse import urlparse
 
 import aiohttp
 import async_timeout
@@ -58,9 +59,9 @@ _STOP = {
 # not brand names (to avoid nuking legitimate mentions like "Amazon rainforest").
 _SPAM_PAT = re.compile(
     r"\b("
-    r"coupon|free shipping|"                  # strong e‑commerce signals
-    r"template|wallpaper|vector|svg|png|jpeg|jpg|"  # asset formats
-    r"stock (?:photo|image|images)"           # stock imagery
+    r"buy|shop|sale|discount|deal|promo|free shipping|"  # put strong commerce terms back
+    r"template|wallpaper|vector|svg|png|jpeg|jpg|"       # asset formats
+    r"stock (?:photo|image|images)"                      # stock imagery
     r")\b",
     re.I,
 )
@@ -108,6 +109,19 @@ def _score_snippet(
 
     if target_year is not None and re.search(rf"\b{target_year}\b", text or ""):
         score += max(0, int(C.TEMPORAL_MATCH_BONUS))
+    # Tiny "newsiness" nudge (helps rank reporting over product/asset pages)
+    if text and re.search(r"\b(report|reported|according to|police said|fact-?check)\b", text, re.I):
+        score += 1
+    if url and re.search(r"(?:^|://)[^/]*news[^/]*\.", url, re.I):
+        score += 1
+    # Tiny "newsiness" nudge
+    newsy = False
+    if text and re.search(r"\b(report|reported|according to|police said|fact-?check)\b", text, re.I):
+        newsy = True
+    if url and re.search(r"(?:^|://)[^/]*news[^/]*\.", url, re.I):
+        newsy = True
+    if newsy:
+        score += 1
 
     return score
 
@@ -178,15 +192,22 @@ async def brave_snippets(
     raw_results = await _fetch(20, use_fresh=bool(fresh_code))
     # Do not paginate under freshness; Brave returns 422 on that path.
 
-    scored: List[Tuple[int, str, int]] = []
+    scored: List[Tuple[int, str, int, str]] = []  # (score, text, idx, domain)
     for idx, res in enumerate(raw_results):
         text = (res.get("description") or res.get("title") or "").strip()
         if not text:
             continue
-        score = _score_snippet(text, res.get("url"), q_tokens, h_tokens, target_year=target_year)
+        url = res.get("url")
+        score = _score_snippet(text, url, q_tokens, h_tokens, target_year=target_year)
         if score == 0:
             continue
-        scored.append((score, text, idx))
+        try:
+            netloc = urlparse(url).netloc.lower() if url else ""
+        except Exception:
+            netloc = ""
+        # strip common www.
+        domain = netloc[4:] if netloc.startswith("www.") else netloc
+        scored.append((score, text, idx, domain))
 
     # If freshness is too restrictive (few results) and freshness was used, widen without it
     if fresh_code and len(scored) < max(3, min(k, 5)):
@@ -198,13 +219,30 @@ async def brave_snippets(
             text = (res.get("description") or res.get("title") or "").strip()
             if not text:
                 continue
-            score = _score_snippet(text, res.get("url"), q_tokens, h_tokens, target_year=target_year)
+            url = res.get("url")
+            score = _score_snippet(text, url, q_tokens, h_tokens, target_year=target_year)
             if score == 0:
                 continue
-            scored.append((score, text, idx))
+            try:
+                netloc = urlparse(url).netloc.lower() if url else ""
+            except Exception:
+                netloc = ""
+            domain = netloc[4:] if netloc.startswith("www.") else netloc
+            scored.append((score, text, idx, domain))
 
+    # Re-rank by score then index (stable), and enforce per-domain cap
     scored.sort(key=lambda t: (-t[0], t[2]))
-    snippets = [txt for _, txt, _ in scored][:k]
+    per_domain_cap = 2
+    used_by_domain: Dict[str, int] = {}
+    picked: List[str] = []
+    for _score, txt, _i, dom in scored:
+        if used_by_domain.get(dom, 0) >= per_domain_cap:
+            continue
+        picked.append(txt)
+        used_by_domain[dom] = used_by_domain.get(dom, 0) + 1
+        if len(picked) >= k:
+            break
+    snippets = picked
     ttl_set(NET_CACHE, cache_key, snippets)
 
     if C.DEBUG:

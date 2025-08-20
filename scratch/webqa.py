@@ -57,9 +57,13 @@ _STOP = {
 }
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_NEWS_HINTS = ("news", "report", "fact check", "fact-check")
+_TOK_RE = re.compile(r"[A-Za-z0-9]+")
+_PUNCT_RE = re.compile(r"[^\w\s-]")  # keep letters/digits/_/-
+_NEWS_HINTS = ("news", "report", "fact check")
+_TOK_RE = re.compile(r"[A-Za-z0-9]+")
 
 
-_PUNCT_RE = re.compile(r"[^\w\s-]")  # conservative: keep letters/digits/_ and hyphens
 def _sanitize_query(q: str, max_len: int = 120) -> str:
     q0 = (q or "").strip()
     q1 = _PUNCT_RE.sub(" ", q0)
@@ -88,6 +92,37 @@ def _extract_year_from_text(s: str | None) -> Optional[int]:
     except Exception:
         return None
 
+def _keywords(headline: Optional[str], question: str, k: int = 6) -> List[str]:
+    text = " ".join([headline or "", question or ""]).lower()
+    toks = [t for t in _TOK_RE.findall(text) if t not in _STOP and len(t) >= 3]
+    freq = {}
+    for t in toks:
+        freq[t] = freq.get(t, 0) + 1
+    return [w for w,_ in sorted(freq.items(), key=lambda x:(-x[1], x[0]))[:k]]
+
+def _factcheck_variant(headline: Optional[str], question: str, loc: Optional[str], year: Optional[int]) -> str:
+    kws = _keywords(headline, question, k=6)
+    base = " ".join(kws + ["fact check"])
+    if loc and loc.lower() not in base:
+        base += f" {loc}"
+    if year and str(year) not in base:
+        base += f" {year}"
+    return base
+
+def _news_variant(headline: Optional[str], question: str, loc: Optional[str], year: Optional[int]) -> str:
+    kws = _keywords(headline, question, k=6)
+    base = " ".join(kws + ["news"])
+    if loc and loc.lower() not in base:
+        base += f" {loc}"
+    if year and str(year) not in base:
+        base += f" {year}"
+    return base
+
+def _site_whitelist_variant(headline: Optional[str], question: str) -> str:
+    # Focused pass over reputable reporting/fact-check outlets
+    kws = " ".join(_keywords(headline, question, k=6))
+    sites = "(site:reuters.com OR site:apnews.com OR site:bbc.com OR site:snopes.com OR site:afp.com OR site:politifact.com OR site:factcheck.org)"
+    return f"{kws} {sites}"
 
 def _decide_freshness_and_year(
     question: str,
@@ -152,19 +187,40 @@ def _build_widened_query(
     widened = f"{base_q} " + " ".join(tokens_to_add)
     return widened, True, details
 
+
+def _top_keywords(headline: Optional[str], question: str, k: int = 5) -> list[str]:
+    text = " ".join([headline or "", question or ""])
+    toks = [t.lower() for t in _TOK_RE.findall(text)]
+    stop = {
+        "the","a","an","and","or","but","on","in","at","to","of","for","with","by",
+        "is","are","was","were","be","been","being","this","that","these","those",
+        "it","its","as","from","into","than"
+    }
+    freq = {}
+    for t in toks:
+        if t in stop or len(t) < 3:
+            continue
+        freq[t] = freq.get(t, 0) + 1
+    return [w for w,_ in sorted(freq.items(), key=lambda x:(-x[1], x[0]))[:k]]
+
+
+
 def _backoff_query(base_q: str, *, headline: Optional[str], event_report: Optional[Dict[str, object]]) -> str:
     """
-    Make an easier, verification-first query from the same content.
-    Heuristics:
+    Make a more news‑friendly verification query:
       - sanitize punctuation
-      - keep top tokens from QUESTION + HEADLINE
-      - append LOCATION/YEAR if available (not already present)
+      - keep top tokens from HEADLINE+QUESTION
+      - append LOCATION/YEAR if available (and not already present)
+      - add newsiness hints ("news", "report", "fact check")
     """
-    # reuse sanitizer
-    q = _sanitize_query(base_q, max_len=140)
-    # add loc/year with existing helper
+    base = _sanitize_query(base_q, max_len=120)
+    kws = _top_keywords(headline, base_q, k=5)
+    q = " ".join(kws + [base])
     widened, _, _ = _build_widened_query(q, headline=headline, event_report=event_report)
-    return widened
+    # ensure at least one news hint is present
+    if not any(h in widened.lower() for h in _NEWS_HINTS):
+        widened = f"{widened} news"
+    return widened[:160].strip()
 
 class WebQAModule:
     """One Web-QA round with headline-aware gating, adaptive freshness, confidence, and conditional widen."""
@@ -201,7 +257,7 @@ class WebQAModule:
             snippets: List[str] = await self._retrieve(self.question, freshness_days, target_year)
         except Exception as exc:  # noqa: BLE001
             # Retry with sanitized query and no freshness
-            logger.warning("Brave error on first try (%s). Retrying with sanitized query.", exc)
+            logger.warning("Brave error on first try (%r). Retrying with sanitized query.", exc)
             log.metric("brave_error")
             s_q = _sanitize_query(self.question)
             try:
@@ -214,9 +270,35 @@ class WebQAModule:
                 logger.warning(msg)
                 return self._make_record(
                     answer=msg, answer_conf=0.0, snippets=[], ok=False, overlap_score=0,
-                    freshness_days_used=None, target_year=target_year, query_used=s_q,
+                    freshness_days_used=None, target_year=target_year, query_used=self.question,
                     widen_attempted=False, widen_success=False, widen_details={},
                 )
+        # Fan-out to richer variants if the snippet pool is thin
+        query_used = self.question
+        if len(snippets) < max(8, C.MIN_SNIPPETS + 2):
+            loc = (self.event_report or {}).get("location") if self.event_report else None
+            yr = _extract_year_from_text((self.event_report or {}).get("date_time") if self.event_report else None)
+            variants = [
+                _news_variant(self.headline, self.question, loc, yr),
+                _factcheck_variant(self.headline, self.question, loc, yr),
+                _site_whitelist_variant(self.headline, self.question),
+            ]
+            for vq in variants:
+                try:
+                    more = await self._retrieve(vq, freshness_days, target_year)
+                    if more:
+                        # Merge by text (case-insensitive)
+                        seen = {s.lower() for s in snippets}
+                        add = [s for s in more if s.lower() not in seen]
+                        if add:
+                            snippets.extend(add)
+                            query_used += " || " + vq
+                            log.metric("webqa_variant_added")
+                    if len(snippets) >= self.k:
+                        break
+                except Exception:
+                    log.metric("webqa_variant_error")
+            
         else:
             self_question_used = self.question
 
@@ -224,7 +306,7 @@ class WebQAModule:
         widen_attempted = False
         widen_success = False
         widen_details: Dict[str, object] = {}
-        query_used = self_question_used
+        # query_used = self_question_used
 
         if len(snippets) < C.MIN_SNIPPETS:
             widen_q, widened, details = _build_widened_query(
@@ -274,9 +356,12 @@ class WebQAModule:
         if overlap_score < C.MIN_OVERLAP:
             ok = False
             log.metric("qa_gate_min_overlap")
-        if answer_len < C.MIN_ANSWER_CHARS:
+        if answer_len < C.MIN_ANSWER_CHARS or overlap_score < C.MIN_OVERLAP:
             ok = False
-            log.metric("qa_gate_min_answer_len")
+            if answer_len < C.MIN_ANSWER_CHARS:
+                log.metric("qa_gate_min_answer_len")
+            else:
+                log.metric("qa_gate_min_overlap")
             # Backoff once with a more general, verification-first query
             try:
                 backoff_q = _backoff_query(self.question, headline=self.headline, event_report=self.event_report)
