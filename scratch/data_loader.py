@@ -31,6 +31,7 @@ import os
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+import logging
 
 try:  # make torch an optional dependency for users who don't need it
     from torch.utils.data import Dataset
@@ -44,7 +45,7 @@ from . import config as C
 
 __all__ = ["MMFakeBenchDataset"]
 
-
+logger = logging.getLogger(__name__)
 def _load_metadata() -> List[Dict[str, Any]]:
     """Read JSON once; raises FileNotFoundError if missing."""
     with open(C.DATA_JSON, encoding="utf-8") as fp:
@@ -77,14 +78,17 @@ class MMFakeBenchDataset(Dataset):
         """
         # 1) load + basic validation
         meta: List[Dict[str, Any]] = data if data is not None else _load_metadata()
+        total = len(meta)
 
         # 2) resolve image paths + filter out missing
         base_dir = Path(C.IMAGES_DIR)
         items: List[Dict[str, Any]] = []
+        missing = 0
         for entry in meta:
             img_rel = entry["image_path"].lstrip("/")
             img_abs = base_dir / img_rel
             if not img_abs.is_file():
+                missing += 1
                 continue  # drop
             entry["_abs_path"] = str(img_abs)
             items.append(entry)
@@ -95,7 +99,18 @@ class MMFakeBenchDataset(Dataset):
             random.shuffle(items)
             items = items[:limit]
 
+        kept = len(items)
+        logger.info(
+            "Dataset scan: meta=%d, kept=%d, missing_images=%d, limit=%s, seed=%s, images_dir=%s",
+            total, kept, missing, str(limit), str(seed), str(base_dir),
+        )
+
         if not items:
+            logger.error(
+                "No samples available after filtering. Check paths and structure.\n"
+                "  DATA_JSON=%s\n  IMAGES_DIR=%s\n  meta_entries=%d, missing_images=%d",
+                C.DATA_JSON, C.IMAGES_DIR, total, missing
+            )
             raise RuntimeError("Dataset initialisation resulted in 0 samples.")
 
         self._items = items

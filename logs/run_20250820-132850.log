@@ -1,0 +1,25 @@
+2025-08-20 13:28:50      INFO  Logging to logs/run_20250820-132850.log
+2025-08-20 13:28:51      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 13:28:51      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-20 13:28:51      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 13:28:51      INFO  Pipeline start – 10 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-20 13:31:41      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:37:43      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:37:43      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 13:39:54      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:39:54      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 13:41:42      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:41:42      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:42:59   WARNING  Brave error on first try (). Retrying with sanitized query.
+2025-08-20 13:46:17      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:46:17      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:48:30      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:48:30      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:48:30      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 13:50:07   WARNING  Brave error on first try (). Retrying with sanitized query.
+2025-08-20 13:51:01      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:53:43      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:53:58      INFO  Results written to results/step08_async.jsonl
+2025-08-20 13:53:58      INFO  Running quick in-memory evaluation …
+2025-08-20 13:53:58      INFO  ==== Pipeline metrics ====
+qgen_fuzzy_dup_hit=8  qa_gate_min_answer_len=76  webqa_backoff_no_gain=62  webqa_backoff_success=12  qgen_fuzzy_dup_final=1  spam_domain_block=62  qa_gate_low_conf=1  spam_text_block=10  webqa_backoff_no_snips=1  brave_error=2  qa_gate_min_snippets=1  webqa_backoff_error=1

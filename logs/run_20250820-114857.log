@@ -1,0 +1,2 @@
+2025-08-20 11:48:57      INFO  Logging to logs/run_20250820-114857.log
+2025-08-20 11:48:57      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test

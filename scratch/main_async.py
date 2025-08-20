@@ -43,7 +43,6 @@ from .webqa import WebQAModule
 from .qa_selector import batch_select
 from .final_classifier import FinalClassifier
 from .evaluator import evaluate_list
-
 # --------------------------------------------------------------------------- #
 # Initialisation
 # --------------------------------------------------------------------------- #
@@ -188,7 +187,45 @@ async def process_sample(sample_idx: int, sample) -> dict:
 # --------------------------------------------------------------------------- #
 
 
-async def main():
+def _apply_overrides(*, data_json: str | None, images_dir: str | None, limit: int | None, seed: int | None):
+    """Mutate config with CLI overrides (if provided) and log the effective values."""
+    changed = []
+    if data_json is not None and data_json != C.DATA_JSON:
+        C.DATA_JSON = data_json; changed.append(f"DATA_JSON={data_json}")
+    if images_dir is not None and images_dir != C.IMAGES_DIR:
+        C.IMAGES_DIR = images_dir; changed.append(f"IMAGES_DIR={images_dir}")
+    if limit is not None and limit != C.LIMIT:
+        C.LIMIT = limit; changed.append(f"LIMIT={limit}")
+    if seed is not None and seed != C.SEED:
+        C.SEED = seed; changed.append(f"SEED={seed}")
+    if changed:
+        logger.info("Applied CLI overrides: %s", ", ".join(changed))
+    logger.info("Dataset paths: DATA_JSON=%s  IMAGES_DIR=%s  LIMIT=%s  SEED=%s",
+                C.DATA_JSON, C.IMAGES_DIR, str(C.LIMIT), str(C.SEED))
+
+
+async def main(*, data_json: str | None = None, images_dir: str | None = None, limit: int | None = None, seed: int | None = None):
+    # Apply CLI overrides before creating router/dataset
+    _apply_overrides(data_json=data_json, images_dir=images_dir, limit=limit, seed=seed)
+
+    # Single router (shared across the run). Downstream callers can temporarily
+    # switch temperature to 0.0 for deterministic prompts and restore afterwards.
+    global mr
+    mr = ModelRouter(C.MODEL_DEFAULT, C.TEMPERATURE)
+
+    # Dataset (create inside main so overrides/env are respected)
+    try:
+        dataset = MMFakeBenchDataset(limit=C.LIMIT, seed=C.SEED)
+    except FileNotFoundError as e:
+        logger.error("Dataset metadata not found: %s (DATA_JSON=%s)", e, C.DATA_JSON)
+        return
+    except RuntimeError as e:
+        logger.error("Dataset initialisation error: %s (DATA_JSON=%s, IMAGES_DIR=%s)", e, C.DATA_JSON, C.IMAGES_DIR)
+        return
+
+    # Output
+    Path(C.RESULTS_PATH).parent.mkdir(parents=True, exist_ok=True)
+
     logger.info(
         "Pipeline start – %d samples, model=%s, chains=%d, q_per_chain=%d",
         len(dataset),

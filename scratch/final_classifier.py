@@ -33,34 +33,8 @@ from typing import Any, Dict, List, Tuple
 from langchain_core.prompts import ChatPromptTemplate
 
 from . import config as C
+from .qa_quality import is_good_qa
 
-# --------------------------------------------------------------------------- #
-# Helper – same quality filter as qa_selector
-# --------------------------------------------------------------------------- #
-
-_BAD_SENTINELS = (
-    "no relevant answer found",
-    "insufficient evidence",
-    "brave error",
-)
-
-def _is_good(qa: Dict[str, Any]) -> bool:
-    if not qa or not qa.get("question") or not qa.get("answer"):
-        return False
-    if qa.get("ok") is not True:
-        return False
-    ans = qa["answer"].strip()
-    if any(ans.lower().startswith(s) for s in _BAD_SENTINELS):
-        return False
-    if len(ans) < C.MIN_ANSWER_CHARS:
-        return False
-    if qa.get("snippet_count", 0) < C.MIN_SNIPPETS:
-        return False
-    if qa.get("overlap_score", 0) < C.MIN_OVERLAP:
-        return False
-    if float(qa.get("answer_conf", 0.0)) < C.MIN_CONF:
-        return False
-    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -133,7 +107,7 @@ class FinalClassifier:
         self.relevancy_text = relevancy_text
         self.qa_pairs_raw = qa_pairs
         self.extra_guidelines = extra_guidelines or ""
-        self.good_pairs = [qa for qa in qa_pairs if _is_good(qa)]
+        self.good_pairs = [qa for qa in qa_pairs if is_good_qa(qa, emit_metrics=False)]
 
     def _parse_relevancy(self) -> str | None:
         txt = (self.relevancy_text or "").upper()
@@ -167,12 +141,50 @@ class FinalClassifier:
                 "The image–headline relevancy analysis returns IMAGE SUPPORTS and no reliable Q-A evidence contradicts it.",
             )
         return ("Uncertain", "No reliable Q-A evidence and the image relevancy is inconclusive.")
+    
+    def _image_override_if_weak(self):
+        """
+        If GOOD Q-A exists but is *weak* (avg overlap < C.EVIDENCE_STRENGTH_MIN),
+        defer to the image relevancy when enabled.
+        Returns (decision, reason) or None if not applicable.
+        """
+        if not self.good_pairs:
+            return None
+        try:
+            avg_overlap = sum(float(qa.get("overlap_score", 0) or 0.0) for qa in self.good_pairs) / max(1, len(self.good_pairs))
+        except Exception:
+            avg_overlap = 0.0
+
+        if not C.USE_IMAGE_FALLBACK or avg_overlap >= float(C.EVIDENCE_STRENGTH_MIN):
+            return None
+
+        rel_flag = self._parse_relevancy()
+        if rel_flag == "REFUTES":
+            return (
+                "Misinformation",
+                f"GOOD Q‑A evidence is weak (avg overlap {avg_overlap:.2f} < {C.EVIDENCE_STRENGTH_MIN}); image analysis REFUTES.",
+            )
+        if rel_flag == "SUPPORTS":
+            return (
+                "Not Misinformation",
+                f"GOOD Q‑A evidence is weak (avg overlap {avg_overlap:.2f} < {C.EVIDENCE_STRENGTH_MIN}); image analysis SUPPORTS.",
+            )
+        # If image is inconclusive, do not override; proceed to LLM verdict.
+        return None
+
+
 
     def run(self, router) -> Tuple[str, str]:
         # Heuristic fast path
         heuristic = self._short_circuit()
         if heuristic is not None:
             return heuristic
+
+        # If GOOD Q-A is present but weak, allow image to override.
+        weak_override = self._image_override_if_weak()
+        if weak_override is not None:
+            return weak_override
+
 
         qa_context = "\n".join(f"Q: {qa['question']}\nA: {qa['answer']}" for qa in self.good_pairs)
 

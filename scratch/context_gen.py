@@ -9,21 +9,29 @@ Upgrades
    • If JSON parsing fails, we **retry once** with a stricter variant of the
      system prompt and `temperature = 0` to encourage deterministic output.
 
-2. **Transparent logging**
+2. **Schema normalization with defaults (this change)**
+   • After parsing, normalize to a fixed schema so downstream code never
+     needs to guard for missing keys. Defaults:
+       - Strings: headline_restated, date_time, location, action, cause → ""
+       - Lists:   entities, open_questions → []
+       - Always includes "summary" (string)
+
+3. **Transparent logging**
    • Parsing errors are logged at *WARNING* once per (headline, image).
    • Retry success/failure is logged at *INFO* when `config.DEBUG` is True.
 
-3. **Same public API & memoisation**
+4. **Same public API & memoisation**
    • `run() → (raw_text, report_dict)` signature unchanged.
    • Results are still cached via `@memo` so downstream callers see no change.
 """
+
 
 from __future__ import annotations
 
 import json
 import logging
 import textwrap
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, List
 
 from .cache import memo
 from .model_router import ModelRouter
@@ -78,6 +86,67 @@ _STRICT_PROMPT = _BASE_PROMPT + textwrap.dedent(
 # Main class
 # --------------------------------------------------------------------------- #
 
+def _as_str(x: Any) -> str:
+    """Coerce arbitrary input to a trimmed string; None → ''."""
+    if x is None:
+        return ""
+    if isinstance(x, str):
+        return x.strip()
+    # If it's a short list/tuple of strings, join; else fallback to str()
+    if isinstance(x, (list, tuple, set)):
+        try:
+            items = [str(i).strip() for i in x if str(i).strip()]
+            return ", ".join(items)
+        except Exception:
+            return str(x).strip()
+    return str(x).strip()
+
+
+def _as_list_of_str(x: Any) -> List[str]:
+    """Coerce to a list[str]; strings → [string], None/invalid → []."""
+    if x is None:
+        return []
+    if isinstance(x, str):
+        s = x.strip()
+        return [s] if s else []
+    if isinstance(x, (list, tuple, set)):
+        out: List[str] = []
+        for i in x:
+            s = str(i).strip()
+            if s:
+                out.append(s)
+        # optional: deduplicate preserving order
+        seen = set()
+        uniq: List[str] = []
+        for s in out:
+            if s not in seen:
+                uniq.append(s); seen.add(s)
+        return uniq
+    # Fallback: single coerced string if meaningful
+    s = str(x).strip()
+    return [s] if s else []
+
+
+def _normalize_schema(parsed: Dict[str, Any] | None) -> Dict[str, Any]:
+    """
+    Return a dict with all expected keys present and correctly typed.
+    Does not set "summary" — caller appends it separately.
+    """
+    d = parsed or {}
+    return {
+        "headline_restated": _as_str(d.get("headline_restated")),
+        "entities": _as_list_of_str(d.get("entities")),
+        "date_time": _as_str(d.get("date_time")),
+        "location": _as_str(d.get("location")),
+        "action": _as_str(d.get("action")),
+        "cause": _as_str(d.get("cause")),
+        "open_questions": _as_list_of_str(d.get("open_questions")),
+    }
+
+
+
+
+
 class EventContextGenerator:
     def __init__(self, headline: str, image_path: str, model_router: ModelRouter):
         self.headline = headline.strip()
@@ -90,7 +159,9 @@ class EventContextGenerator:
         """Return (raw_text, report_dict) with graceful retry on JSON fail."""
         raw, report = self._invoke(_BASE_PROMPT)
 
-        if report:  # JSON parsed fine first try
+        # Retry only if the JSON block did not parse successfully
+        if report.get("_parsed_ok"):
+            report.pop("_parsed_ok", None)  # hide internal flag from downstream
             return raw, report
 
         # Retry once with stricter prompt + deterministic temperature
@@ -107,7 +178,9 @@ class EventContextGenerator:
         if C.DEBUG:
             logger.info("EventContext retry success=%s for headline: %.60s…", bool(report2), self.headline)
 
-        return (raw2, report2) if report2 else (raw, report)  # fall back to first raw if still bad
+        final_raw, final_report = (raw2, report2) if report2.get("_parsed_ok") else (raw, report)
+        final_report.pop("_parsed_ok", None)  # hide internal flag
+        return final_raw, final_report
 
     # ------------------------------------------------------------------ #
     def _invoke(self, system_prompt: str) -> Tuple[str, Dict[str, Any]]:
@@ -126,16 +199,22 @@ class EventContextGenerator:
 
         summary = raw
         report: Dict[str, Any] = {}
+        parsed_ok: bool = False
 
         if "JSON:" in raw:
             summary_part, json_part = raw.split("JSON:", 1)
             summary = summary_part.replace("SUMMARY:", "").strip()
             try:
-                report = json.loads(json_part.strip())
+                parsed = json.loads(json_part.strip())
+                report = _normalize_schema(parsed)
+                parsed_ok = True
             except Exception as exc:  # noqa: BLE001
                 if C.DEBUG:
                     logger.debug("EventContext JSON parse error: %s", exc)
-                report = {}
+                # Provide normalized defaults even on parse failure
+                report = _normalize_schema({})
 
-        report["summary"] = summary  # always include summary narrative
+        # Always include summary narrative and parse status flag
+        report["summary"] = _as_str(summary)
+        report["_parsed_ok"] = parsed_ok
         return raw, report

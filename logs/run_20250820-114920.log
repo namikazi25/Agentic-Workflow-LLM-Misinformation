@@ -1,0 +1,51 @@
+2025-08-20 11:49:20      INFO  Logging to logs/run_20250820-114920.log
+2025-08-20 11:49:20      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 11:49:20      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-20 11:49:20      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 11:49:20      INFO  Pipeline start – 10 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-20 11:50:23   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+type+of+large,+dark,+winged+creature+was+sighted+near+Los+Angeles+International+Airport?&count=50'
+2025-08-20 11:50:52   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Was+the+sighting+of+a+large+winged+creature+near+Los+Angeles+International+Airport+reported+to+police+officials?&count=50&freshness=py'
+2025-08-20 11:50:52      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 11:50:52      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 11:50:52      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 11:52:59      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 11:52:59      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 11:55:06      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 11:55:06      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 11:55:56   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+rainbow+streaking+effect+on+the+frisbee+a+real+phenomenon+or+a+photographic+effect?&count=50'
+2025-08-20 11:56:08   WARNING  Brave error: 
+2025-08-20 11:56:21   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+specific+frisbee+recreational+activities+or+sports+use+luminous+or+rainbow-streaking+frisbees?&count=50&freshness=py'
+2025-08-20 11:56:22   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+photographic+techniques+are+used+to+capture+the+luminous,+streaking+frisbee?&count=50'
+2025-08-20 11:56:31   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+young+man+in+the+image+a+professional+frisbee+player?&count=50&freshness=py'
+2025-08-20 11:56:49   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+luminous,+rainbow-colored+frisbee+being+used+in+a+performance+or+art+project?&count=50&freshness=py'
+2025-08-20 11:56:52      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 11:56:52      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 11:58:28      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 11:58:28      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:00:03      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:00:03      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:00:03      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:00:49   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Why+is+a+large+snake+suspended+above+a+street?&count=50'
+2025-08-20 12:00:55   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+suspended+above+the+street+a+physical+object+or+a+digital+creation?&count=50'
+2025-08-20 12:01:02   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+is+the+significance+of+a+large+snake+suspended+above+a+street+with+a+bus?&count=50'
+2025-08-20 12:01:20   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+kind+of+event+or+display+features+a+large+snake+suspended+above+a+street+with+a+small+bus?&count=50'
+2025-08-20 12:01:26   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+suspended+above+the+street+a+prop+for+a+film+or+television+production?&count=50'
+2025-08-20 12:01:26   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+is+the+origin+or+purpose+of+the+large+snake+suspended+above+a+street+with+a+small+bus?&count=50'
+2025-08-20 12:01:32   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Is+the+large+snake+suspended+above+a+street+part+of+a+specific+festival+or+parade?&count=50'
+2025-08-20 12:01:32      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:01:32      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:01:32      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:02:49   WARNING  Brave error: 422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Who+is+the+artist+behind+the+winged+foam+entity+emerging+from+the+bathroom+sink?&count=50'
+2025-08-20 12:02:55      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:02:55      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:02:55      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:04:44      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:04:44      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:04:44      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:07:18      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:07:18      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:07:18      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:07:18      INFO  Results written to results/step08_async.jsonl
+2025-08-20 12:07:18      INFO  Running quick in-memory evaluation …
+2025-08-20 12:07:18      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=68  brave_error=16  spam_domain_block=15  spam_text_block=38  qgen_fuzzy_dup_hit=5  qgen_fuzzy_dup_final=2

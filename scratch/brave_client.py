@@ -32,6 +32,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from . import config as C
 from .cache import NET_CACHE, ttl_get, ttl_set
 
+from . import log
+
+
+
+
+
+
+
 BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
 BRAVE_KEY: str | None = os.getenv("BRAVE_SEARCH_API_KEY") or os.getenv("SEARCH_API")
 
@@ -46,20 +54,26 @@ _STOP = {
     "this", "that", "these", "those", "it", "its", "as", "from", "into", "than",
 }
 
+# Text-level anti-spam should only catch generic commerce/asset terms,
+# not brand names (to avoid nuking legitimate mentions like "Amazon rainforest").
 _SPAM_PAT = re.compile(
     r"\b("
-    r"buy|shop|sale|price|discount|coupon|deal|promo|free shipping|"
-    r"template|wallpaper|vector|svg|png|jpeg|jpg|"
-    r"pinterest|etsy|aliexpress|amazon|ebay|"
-    r"shutterstock|istock|getty|depositphotos|adobe stock|freepik|dreamstime|123rf|"
-    r"stock (?:photo|image|images)"
+    r"coupon|free shipping|"                  # strong e‑commerce signals
+    r"template|wallpaper|vector|svg|png|jpeg|jpg|"  # asset formats
+    r"stock (?:photo|image|images)"           # stock imagery
     r")\b",
     re.I,
 )
 
+# Domain-level anti-spam: block known stock/marketplace hosts (any subdomain).
+# Also cover stock.adobe.com explicitly and both istock.com / istockphoto.com.
 _DOMAIN_SPAM_PAT = re.compile(
-    r"(?:^|://)(?:www\.)?(?:pinterest|etsy|aliexpress|amazon|ebay|"
-    r"shutterstock|istockphoto|gettyimages|depositphotos|adobestock|freepik|dreamstime|123rf)\.", re.I
+    r"(?:^|://)(?:[^/]*\.)?(?:"
+    r"pinterest|etsy|aliexpress|amazon|ebay|"
+    r"shutterstock|istock(?:photo)?|gettyimages|depositphotos|freepik|dreamstime|123rf|"
+    r"stock\.adobe"
+    r")\.",
+    re.I,
 )
 
 def _tokenise(text: str) -> set[str]:
@@ -79,8 +93,10 @@ def _score_snippet(
     if the snippet text contains the target_year. Spammy snippets score 0.
     """
     if _SPAM_PAT.search(text or ""):
+        log.metric("spam_text_block")
         return 0
     if url and _DOMAIN_SPAM_PAT.search(url or ""):
+        log.metric("spam_domain_block")
         return 0
     s_tokens = _tokenise(text)
     overlap_q = len(q_tokens & s_tokens)
@@ -138,13 +154,17 @@ async def brave_snippets(
     h_tokens = _tokenise(headline) if headline else None
     fresh_code = _freshness_code(freshness_days)
 
-    async def _fetch(count: int, use_fresh: bool) -> List[dict]:
+    MAX_COUNT = 20
+    async def _fetch(count: int, use_fresh: bool, *, offset: int = 0) -> List[dict]:
         headers = {
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "X-Subscription-Token": BRAVE_KEY,
         }
-        params = {"q": query, "count": count}
+        params = {"q": query, "count": min(count, MAX_COUNT)}
+        # Workaround Brave 422: do NOT send offset when freshness is used.
+        if offset and not use_fresh:
+            params["offset"] = max(0, int(offset))
         if use_fresh and fresh_code:
             params["freshness"] = fresh_code
         async with async_timeout.timeout(10):
@@ -156,8 +176,7 @@ async def brave_snippets(
 
     # First try with requested freshness (if any)
     raw_results = await _fetch(20, use_fresh=bool(fresh_code))
-    if len(raw_results) < k:
-        raw_results += await _fetch(50, use_fresh=bool(fresh_code))
+    # Do not paginate under freshness; Brave returns 422 on that path.
 
     scored: List[Tuple[int, str, int]] = []
     for idx, res in enumerate(raw_results):
@@ -171,7 +190,10 @@ async def brave_snippets(
 
     # If freshness is too restrictive (few results) and freshness was used, widen without it
     if fresh_code and len(scored) < max(3, min(k, 5)):
-        raw_results_wide = await _fetch(50, use_fresh=False)
+        # Widen without freshness; safe to paginate here.
+        raw_results_wide = await _fetch(20, use_fresh=False)
+        if len(raw_results_wide) < k:
+            raw_results_wide += await _fetch(20, use_fresh=False, offset=20)
         for idx, res in enumerate(raw_results_wide, 10_000):
             text = (res.get("description") or res.get("title") or "").strip()
             if not text:

@@ -1,0 +1,30 @@
+2025-08-20 12:47:09      INFO  Logging to logs/run_20250820-124709.log
+2025-08-20 12:47:10      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 12:47:10      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-20 12:47:10      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 12:47:10      INFO  Pipeline start – 10 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-20 12:48:31   WARNING  Brave error on first try (422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Which+specific+police+agencies+or+units+were+involved+in+the+emergency+response+at+Los+Angeles+International+Airport+Terminal+3?&count=20&offset=20&freshness=py'). Retrying with sanitized query.
+2025-08-20 12:48:43      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:48:45      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:50:39      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:50:39      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:50:39      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:52:27      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:54:22      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:55:52      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:57:01   WARNING  Brave error on first try (422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+materials+are+used+to+produce+the+150,000+meters+of+tinsel+per+day?&count=20&offset=20&freshness=py'). Retrying with sanitized query.
+2025-08-20 12:57:38      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:57:38      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:59:17      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:59:17      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:59:17      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 13:01:04      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:03:01      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:03:01      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:05:19      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 13:05:19      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 13:05:19      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 13:05:19      INFO  Results written to results/step08_async.jsonl
+2025-08-20 13:05:19      INFO  Running quick in-memory evaluation …
+2025-08-20 13:05:19      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=78  brave_error=2  spam_domain_block=20  spam_text_block=40  qa_gate_min_snippets=5  qa_gate_min_overlap=2  qa_gate_low_conf=2  qgen_fuzzy_dup_hit=3

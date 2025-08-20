@@ -59,6 +59,13 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 
 
+_PUNCT_RE = re.compile(r"[^\w\s-]")  # conservative: keep letters/digits/_ and hyphens
+def _sanitize_query(q: str, max_len: int = 120) -> str:
+    q0 = (q or "").strip()
+    q1 = _PUNCT_RE.sub(" ", q0)
+    q2 = " ".join(q1.split())
+    return q2[:max_len].strip()
+
 def _tokenise(text: str | None) -> List[str]:
     if not text:
         return []
@@ -145,6 +152,19 @@ def _build_widened_query(
     widened = f"{base_q} " + " ".join(tokens_to_add)
     return widened, True, details
 
+def _backoff_query(base_q: str, *, headline: Optional[str], event_report: Optional[Dict[str, object]]) -> str:
+    """
+    Make an easier, verification-first query from the same content.
+    Heuristics:
+      - sanitize punctuation
+      - keep top tokens from QUESTION + HEADLINE
+      - append LOCATION/YEAR if available (not already present)
+    """
+    # reuse sanitizer
+    q = _sanitize_query(base_q, max_len=140)
+    # add loc/year with existing helper
+    widened, _, _ = _build_widened_query(q, headline=headline, event_report=event_report)
+    return widened
 
 class WebQAModule:
     """One Web-QA round with headline-aware gating, adaptive freshness, confidence, and conditional widen."""
@@ -180,28 +200,31 @@ class WebQAModule:
         try:
             snippets: List[str] = await self._retrieve(self.question, freshness_days, target_year)
         except Exception as exc:  # noqa: BLE001
-            msg = f"Brave error: {exc}"
-            logger.warning(msg)
+            # Retry with sanitized query and no freshness
+            logger.warning("Brave error on first try (%s). Retrying with sanitized query.", exc)
             log.metric("brave_error")
-            return self._make_record(
-                answer=msg,
-                answer_conf=0.0,
-                snippets=[],
-                ok=False,
-                overlap_score=0,
-                freshness_days_used=freshness_days,
-                target_year=target_year,
-                query_used=self.question,
-                widen_attempted=False,
-                widen_success=False,
-                widen_details={},
-            )
+            s_q = _sanitize_query(self.question)
+            try:
+                snippets = await self._retrieve(s_q, None, target_year)
+                if not snippets:
+                    raise RuntimeError("No snippets after sanitize-retry")
+                self_question_used = s_q
+            except Exception as exc2:
+                msg = f"Brave error (after sanitize): {exc2}"
+                logger.warning(msg)
+                return self._make_record(
+                    answer=msg, answer_conf=0.0, snippets=[], ok=False, overlap_score=0,
+                    freshness_days_used=None, target_year=target_year, query_used=s_q,
+                    widen_attempted=False, widen_success=False, widen_details={},
+                )
+        else:
+            self_question_used = self.question
 
         # 2) If thin, **auto-retry once** with widened query
         widen_attempted = False
         widen_success = False
         widen_details: Dict[str, object] = {}
-        query_used = self.question
+        query_used = self_question_used
 
         if len(snippets) < C.MIN_SNIPPETS:
             widen_q, widened, details = _build_widened_query(
@@ -254,6 +277,38 @@ class WebQAModule:
         if answer_len < C.MIN_ANSWER_CHARS:
             ok = False
             log.metric("qa_gate_min_answer_len")
+            # Backoff once with a more general, verification-first query
+            try:
+                backoff_q = _backoff_query(self.question, headline=self.headline, event_report=self.event_report)
+                if backoff_q and backoff_q != query_used:
+                    wid_snips = await self._retrieve(backoff_q, None, target_year)
+                    # Re-answer on backoff snippets
+                    if wid_snips:
+                        b_answer, b_ok_llm, b_conf = answer_from_evidence(
+                            self.router, self.question, wid_snips, headline=self.headline
+                        )
+                        b_len = len((b_answer or "").strip())
+                        # Adopt backoff result only if it materially improves length/ok/conf
+                        if b_ok_llm and b_len >= C.MIN_ANSWER_CHARS and b_conf >= max(0.25, conf):
+                            answer, conf = b_answer, b_conf
+                            snippets = wid_snips
+                            snippet_count = len(wid_snips)
+                            # recompute overlap & flags
+                            per_snip_scores = []
+                            for s in wid_snips:
+                                oq = _overlap(q_tokens, s)
+                                oh = _overlap(h_tokens, s) if h_tokens else oq
+                                per_snip_scores.append(min(oq, oh))
+                            overlap_score = max(per_snip_scores, default=0)
+                            ok = True
+                            query_used = backoff_q
+                            log.metric("webqa_backoff_success")
+                        else:
+                            log.metric("webqa_backoff_no_gain")
+                    else:
+                        log.metric("webqa_backoff_no_snips")
+            except Exception:
+                log.metric("webqa_backoff_error")
         if conf < C.MIN_CONF:
             ok = False
             log.metric("qa_gate_low_conf")

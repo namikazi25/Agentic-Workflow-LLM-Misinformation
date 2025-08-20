@@ -99,9 +99,11 @@ _BASE_PROMPT = ChatPromptTemplate.from_messages(
 
                 • Produce **ONE** concise, Google-style query that will help
                   verify the headline.
-                • Your question **must** include at least one significant noun
-                  or named entity from the headline so that web search hits
-                  the right topic.
+                • Prefer verifying the **core claim** (existence, who/what/where/when)
+                  before drilling into micro-details. Avoid over-specific patterns like
+                  “Which specific …”, “What is the name of …”, “Who is the artist behind …”.
+                  If a detail is unknown, aim for a query that still retrieves high-coverage,
+                  authoritative reporting about the event.
                 • **Do NOT** repeat or paraphrase any question listed below in
                   either *PREVIOUS_BRANCH* or *ALREADY_ASKED*.
 
@@ -132,6 +134,8 @@ _ENRICHED_PROMPT = ChatPromptTemplate.from_messages(
                   • when helpful, **prefer** to include the LOCATION and/or a
                     specific **year/month** derived from DATE (but do not
                     fabricate missing details).
+                Also avoid over-specific requests for named lists or internal unit names;
+                prefer verifying whether the **reported event** occurred as stated.
 
                 SUMMARY:
                 {summary}
@@ -166,6 +170,61 @@ def _get_chain(prompt_obj, llm):
         _CHAIN_CACHE[key] = prompt_obj | llm
     return _CHAIN_CACHE[key]
 
+# --------------------------------------------------------------------------- #
+# Fuzzy de‑dup helpers (optional)
+# --------------------------------------------------------------------------- #
+import re
+from . import config as C, log
+
+def _normalize_ws(s: str) -> str:
+    return " ".join((s or "").lower().split())
+
+def _char_ngrams(s: str, n: int) -> set[str]:
+    # keep letters/digits/spaces, collapse spaces, remove spaces for ngramming
+    s0 = re.sub(r"[^a-z0-9\s]+", "", (s or "").lower())
+    s1 = " ".join(s0.split()).replace(" ", "")
+    if len(s1) < n:
+        return {s1} if s1 else set()
+    return {s1[i:i+n] for i in range(len(s1) - n + 1)}
+
+_TOK_RE = re.compile(r"[a-z0-9]+")
+_STOP = {
+    "the","a","an","and","or","but","on","in","at","to","of","for",
+    "with","by","about","is","are","was","were","be","been","being",
+    "this","that","these","those","it","its","as","from","into","than",
+}
+def _tokens(s: str) -> set[str]:
+    toks = {t for t in _TOK_RE.findall((s or "").lower()) if t not in _STOP}
+    return toks
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a and not b:
+        return 1.0
+    u = a | b
+    if not u:
+        return 0.0
+    return len(a & b) / len(u)
+
+def _similarity(a: str, b: str) -> float:
+    mode = (C.QA_DEDUP_SIM_MODE or "trigram").lower()
+    if mode == "token":
+        return _jaccard(_tokens(a), _tokens(b))
+    # default: trigram
+    n = max(2, int(getattr(C, "QA_DEDUP_NGRAM", 3) or 3))
+    return _jaccard(_char_ngrams(a, n), _char_ngrams(b, n))
+
+def _fuzzy_dup(question: str, candidates: list[str]) -> bool:
+    if not C.QA_DEDUP_FUZZY or not candidates:
+        return False
+    qn = _normalize_ws(question)
+    thresh = float(getattr(C, "QA_DEDUP_THRESHOLD", 0.82) or 0.82)
+    for cand in candidates:
+        cn = _normalize_ws(cand)
+        if not cn:
+            continue
+        if _similarity(qn, cn) >= thresh:
+            return True
+    return False
 
 # --------------------------------------------------------------------------- #
 # Main public class
@@ -246,14 +305,26 @@ class QAGenerationTool:
                 return "", False
 
             key = _question_key(question)
-            if key in self._registry or any(_question_key(q) == key for q in prev_qs):
+            exact_dup = (key in self._registry) or any(_question_key(q) == key for q in prev_qs)
+            fuzzy_dup = False
+            if not exact_dup and C.QA_DEDUP_FUZZY:
+                # Compare against both local previous and global registry contents
+                candidate_texts = list(prev_qs) + list(self._registry)
+                fuzzy_dup = _fuzzy_dup(question, candidate_texts)
+
+            if exact_dup or fuzzy_dup:
                 if attempt < self.MAX_DUP_RETRY:
                     # Mark duplicate and retry with it included in previous_qa
                     prev_qs.append(question)
                     variables["previous_qa"] = json.dumps(prev_qs, ensure_ascii=False, indent=2)
+                    if fuzzy_dup:
+                        log.metric("qgen_fuzzy_dup_hit")                    
                     continue  # re-prompt
                 else:
-                    logger.debug("Duplicate tolerated after %d retries: %s", attempt, question)
+                    logger.debug("Duplicate (exact=%s, fuzzy=%s) tolerated after %d retries: %s",
+                                 exact_dup, fuzzy_dup, attempt, question)
+                    if fuzzy_dup:
+                        log.metric("qgen_fuzzy_dup_final")
                     # fall through and accept duplicate
 
             # Unique question → record & return

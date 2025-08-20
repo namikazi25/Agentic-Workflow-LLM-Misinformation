@@ -72,74 +72,12 @@ from typing import Any, Dict, List
 from langchain_core.prompts import ChatPromptTemplate
 from cachetools import LRUCache
 
-from . import config as C
-from . import log
+from .qa_quality import is_good_qa
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["batch_select"]
 
-# --------------------------------------------------------------------------- #
-# Utility: assess QA quality (with diagnostics)
-# --------------------------------------------------------------------------- #
-
-_BAD_SENTINELS = (
-    "no relevant answer found",
-    "insufficient evidence",
-    "brave error",
-)
-
-def _is_good(qa: Dict[str, Any]) -> bool:
-    """
-    Return True if the QA pair passes all gates.
-    Also increments diagnostic metrics for certain drop reasons:
-      - selector_drop_short_answer
-      - selector_drop_low_overlap
-      - selector_drop_low_conf
-    """
-    if not qa or not qa.get("question") or not qa.get("answer"):
-        return False
-
-    if qa.get("ok") is not True:
-        return False
-
-    ans = qa["answer"].strip()
-    if any(ans.lower().startswith(s) for s in _BAD_SENTINELS):
-        return False
-
-    # Collect reasons (we may log multiple reasons for one dropped pair)
-    reasons: List[str] = []
-
-    # Core gates used by selector/classifier
-    if len(ans) < C.MIN_ANSWER_CHARS:
-        reasons.append("short_answer")
-
-    if qa.get("snippet_count", 0) < C.MIN_SNIPPETS:
-        # We keep this gate but do not count it per the brief
-        return False if not reasons else False  # still fail fast
-
-    if qa.get("overlap_score", 0) < C.MIN_OVERLAP:
-        reasons.append("low_overlap")
-
-    try:
-        conf_val = float(qa.get("answer_conf", 0.0))
-    except Exception:
-        conf_val = 0.0
-    if conf_val < C.MIN_CONF:
-        reasons.append("low_conf")
-
-    if reasons:
-        # Emit diagnostics (one metric per reason observed)
-        for r in set(reasons):
-            if r == "short_answer":
-                log.metric("selector_drop_short_answer")
-            elif r == "low_overlap":
-                log.metric("selector_drop_low_overlap")
-            elif r == "low_conf":
-                log.metric("selector_drop_low_conf")
-        return False
-
-    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -185,7 +123,7 @@ _A_RE = re.compile(r"Answer:\s*(.+)", re.I | re.S)
 
 def _select_one_for_branch(router, qa_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Pick the best QA from a single branch deterministically."""
-    good = [qa for qa in qa_list if _is_good(qa)]
+    good = [qa for qa in qa_list if is_good_qa(qa, emit_metrics=True, metrics_prefix="selector")]
     if not good:
         return {}  # nothing usable in this branch
 

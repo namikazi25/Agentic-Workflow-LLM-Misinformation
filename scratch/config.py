@@ -1,17 +1,38 @@
 """
 scratch/config.py
 =================
-...
+
+Config with sensible defaults; certain fields can be overridden via
+environment variables (see below) or via CLI flags handled in main_async.py.
+
+Env overrides (optional):
+  - DATA_JSON      → path to metadata json (default: data/MMFakeBench_test.json)
+  - IMAGES_DIR     → root dir for images     (default: data/MMFakeBench_test-001/MMFakeBench_test)
+  - DATA_LIMIT     → int or "None"           (default: 10)
+  - DATA_SEED      → int                     (default: 71)
 """
 
 # --------------------------------------------------------------------------- #
 # Dataset
 # --------------------------------------------------------------------------- #
 
-DATA_JSON: str = "data/MMFakeBench_test.json"
-IMAGES_DIR: str = "data/MMFakeBench_test-001/MMFakeBench_test"
-LIMIT: int | None = 10
-SEED: int = 71
+import os
+
+def _env_int(name: str, default):
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        if isinstance(default, type(None)) and val.lower() == "none":
+            return None
+        return int(val)
+    except Exception:
+        return default
+
+DATA_JSON: str = os.getenv("DATA_JSON", "data/MMFakeBench_test.json")
+IMAGES_DIR: str = os.getenv("IMAGES_DIR", "data/MMFakeBench_test-001/MMFakeBench_test")
+LIMIT: int | None = _env_int("DATA_LIMIT", 10)
+SEED: int = _env_int("DATA_SEED", 71)
 
 # --------------------------------------------------------------------------- #
 # LLM / model routing
@@ -97,6 +118,19 @@ DEBUG: bool = False
 # If True, when text evidence is weak/absent we allow image REFUTES/SUPPORTS
 # to short-circuit the decision. If False, we won't fall back to the image.
 USE_IMAGE_FALLBACK: bool = True  # ✅ NEW (requested)
+
+# --------------------------------------------------------------------------- #
+# Q/A generation – de‑duplication controls
+# --------------------------------------------------------------------------- #
+# Enable fuzzy (near‑duplicate) detection in addition to exact match checks.
+QA_DEDUP_FUZZY: bool = True
+# "trigram" (character trigrams) or "token" (word tokens) for Jaccard.
+QA_DEDUP_SIM_MODE: str = "trigram"
+# Jaccard similarity threshold to treat as duplicate (0..1).
+QA_DEDUP_THRESHOLD: float = 0.82
+# For trigram mode, the n in n‑grams.
+QA_DEDUP_NGRAM: int = 3
+
 
 # --------------------------------------------------------------------------- #
 # Logging

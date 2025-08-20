@@ -1,0 +1,21 @@
+2025-08-20 12:29:37      INFO  Logging to logs/run_20250820-122937.log
+2025-08-20 12:29:37      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 12:29:37      INFO  Applied CLI overrides: LIMIT=5
+2025-08-20 12:29:37      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=5  SEED=71
+2025-08-20 12:29:37      INFO  Dataset scan: meta=10000, kept=5, missing_images=9732, limit=5, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-20 12:29:37      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-20 12:30:49   WARNING  Brave error on first try (422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=Was+the+large,+dark,+winged+creature+observed+flying+within+Los+Angeles+International+Airport+airspace?&count=20&offset=20&freshness=py'). Retrying with sanitized query.
+2025-08-20 12:31:10      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:31:10      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:33:17      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:33:17      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:33:17      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:34:38   WARNING  Brave error on first try (). Retrying with sanitized query.
+2025-08-20 12:35:18      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 12:35:18      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 12:37:12   WARNING  Brave error on first try (422, message='Unprocessable Entity', url='https://api.search.brave.com/res/v1/web/search?q=What+type+of+frisbee+sport+or+activity+uses+glowing+frisbees+at+dusk+or+dawn?&count=20&offset=20&freshness=py'). Retrying with sanitized query.
+2025-08-20 12:37:24      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 12:38:57      INFO  Results written to results/step08_async.jsonl
+2025-08-20 12:38:57      INFO  Running quick in-memory evaluation …
+2025-08-20 12:38:57      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=36  brave_error=3  spam_text_block=32  spam_domain_block=14

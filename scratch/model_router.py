@@ -32,7 +32,9 @@ from __future__ import annotations
 import os
 import math
 import time
-from typing import Any, Dict, Optional, Tuple
+import json
+import re
+from typing import Any, Dict, Optional, Tuple, List
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -215,32 +217,18 @@ class ModelRouter:
         dict
             ``{"raw": <LangChain return>, "confidence": float}``
 
-        Confidence is estimated heuristically:
-        • OpenAI:   exp(average token log-prob) ∈ (0,1]
-        • Gemini:   first candidate.probability  ∈ [0,1]
-        • Fallback: 0.5
+        Confidence is estimated heuristically with model-aware fallbacks:
+        • OpenAI:   exp(mean token log-prob) over first N tokens, if available.
+        • Gemini:   use candidate.probability when present; otherwise token logprobs if exposed.
+        • Fallback: structure/format compliance score derived from the text.
         """
         tries = 0
         while tries < self.max_retries:
             try:
                 resp = self._llm.invoke(messages)
 
-                # --- confidence heuristic -------------------------------- #
-                conf = 0.5  # fallback
-
-                # OpenAI
-                llm_out = getattr(resp, "llm_output", {})
-                if llm_out and "token_logprobs" in llm_out:
-                    logs = llm_out["token_logprobs"]
-                    if logs:
-                        conf = float(min(max(math.exp(sum(logs) / len(logs)), 0.0), 1.0))
-
-                # Gemini
-                elif hasattr(resp, "candidates") and resp.candidates:
-                    prob = getattr(resp.candidates[0], "probability", None)
-                    if prob is not None:
-                        conf = float(min(max(prob, 0.0), 1.0))
-
+                
+                conf = self._infer_confidence(resp)
                 return {"raw": resp, "confidence": conf}
 
             except Exception as exc:  # noqa: BLE001
@@ -252,6 +240,167 @@ class ModelRouter:
                 raise  # non-retryable
 
         raise RuntimeError("Max retries exhausted.")
+
+    # ------------------------------------------------------------------ #
+    # Confidence helpers
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _bound01(x: float) -> float:
+        try:
+            return float(min(max(x, 0.0), 1.0))
+        except Exception:
+            return 0.5
+
+    def _logprobs_to_conf(self, logs: List[float]) -> float:
+        if not logs:
+            return 0.5
+        try:
+            mean_lp = sum(float(v) for v in logs) / max(1, len(logs))
+            return self._bound01(math.exp(mean_lp))
+        except Exception:
+            return 0.5
+
+    def _extract_openai_token_logprobs(self, resp) -> List[float]:
+        """
+        Try multiple LangChain/OpenAI shapes to harvest token logprobs.
+        Returns a (possibly empty) list of floats.
+        """
+        logs: List[float] = []
+        # Legacy/explicit path used earlier in this project
+        try:
+            llm_out = getattr(resp, "llm_output", {}) or {}
+            cand = llm_out.get("token_logprobs")
+            if isinstance(cand, list) and cand:
+                return [float(x) for x in cand if isinstance(x, (int, float))]
+        except Exception:
+            pass
+
+        # Newer LangChain response metadata variants
+        try:
+            meta = getattr(resp, "response_metadata", {}) or {}
+            # 1) meta["token_logprobs"] → [floats]
+            cand = meta.get("token_logprobs")
+            if isinstance(cand, list) and cand:
+                return [float(x) for x in cand if isinstance(x, (int, float))]
+            # 2) meta["logprobs"]["content"] → [{"logprob": -0.1, ...}, ...]
+            lp = meta.get("logprobs")
+            if isinstance(lp, dict) and isinstance(lp.get("content"), list):
+                for item in lp["content"]:
+                    val = item.get("logprob") if isinstance(item, dict) else None
+                    if isinstance(val, (int, float)):
+                        logs.append(float(val))
+                if logs:
+                    return logs
+            # 3) meta["choices"][0]["logprobs"]["content"][i]["logprob"]
+            choices = meta.get("choices")
+            if isinstance(choices, list) and choices:
+                ch = choices[0] or {}
+                ch_lp = ch.get("logprobs") if isinstance(ch, dict) else None
+                if isinstance(ch_lp, dict) and isinstance(ch_lp.get("content"), list):
+                    for item in ch_lp["content"]:
+                        val = item.get("logprob") if isinstance(item, dict) else None
+                        if isinstance(val, (int, float)):
+                            logs.append(float(val))
+                    if logs:
+                        return logs
+        except Exception:
+            pass
+        return logs
+
+    def _extract_gemini_prob_or_logs(self, resp) -> Tuple[Optional[float], List[float]]:
+        """
+        Gemini sometimes exposes candidate.probability; otherwise token logprobs
+        may be absent. Return (probability|None, logprobs_list).
+        """
+        prob: Optional[float] = None
+        logs: List[float] = []
+        try:
+            if hasattr(resp, "candidates") and resp.candidates:
+                cand = resp.candidates[0]
+                # candidate.probability is not guaranteed across releases
+                p = getattr(cand, "probability", None)
+                if isinstance(p, (int, float)):
+                    prob = float(p)
+        except Exception:
+            pass
+        try:
+            meta = getattr(resp, "response_metadata", {}) or {}
+            cand = meta.get("token_logprobs")
+            if isinstance(cand, list) and cand:
+                logs = [float(x) for x in cand if isinstance(x, (int, float))]
+        except Exception:
+            pass
+        return prob, logs
+
+    def _structure_conf_from_text(self, resp) -> float:
+        """
+        Fallback: derive a soft confidence from output structure/length and
+        formats expected elsewhere in this project.
+        """
+        try:
+            text = getattr(resp, "content", None) or str(resp or "")
+        except Exception:
+            text = ""
+        t = (text or "").strip()
+        if not t:
+            return 0.2
+
+        # Length banding
+        n = len(t)
+        if n < 10:
+            conf = 0.2
+        elif n < 40:
+            conf = 0.4
+        elif n <= 1000:
+            conf = 0.6
+        elif n <= 3000:
+            conf = 0.5
+        else:
+            conf = 0.4
+
+        u = t.upper()
+        # Known task patterns in this repo
+        if "FINISH[IMAGE REFUTES]" in u or "FINISH[IMAGE SUPPORTS]" in u:
+            conf += 0.2
+        if re.search(r"\bDECISION:\b", t, re.I) and re.search(r"\bREASON:\b", t, re.I):
+            conf += 0.15
+        if re.search(r"\bQuestion:\b", t) and re.search(r"\bAnswer:\b", t):
+            conf += 0.10
+        # JSON-like (for context_gen)
+        if "{" in t and "}" in t:
+            try:
+                start = t.find("{"); end = t.rfind("}")
+                if 0 <= start < end:
+                    json.loads(t[start : end + 1])
+                    conf += 0.15
+            except Exception:
+                pass
+        return self._bound01(conf)
+
+    def _infer_confidence(self, resp) -> float:
+        """
+        Unified confidence adapter across providers with graceful degradation.
+        """
+        # 1) Try OpenAI-style token logprobs first
+        logs = self._extract_openai_token_logprobs(resp)
+        if logs:
+            # Use a fixed prefix of tokens to reduce tail noise
+            return self._logprobs_to_conf(logs[:20])
+
+        # 2) Gemini: probability or logs (if exposed)
+        prob, glogs = self._extract_gemini_prob_or_logs(resp)
+        if prob is not None:
+            return self._bound01(prob)
+        if glogs:
+            return self._logprobs_to_conf(glogs[:20])
+
+        # 3) Fallback: structure/format compliance
+        return self._structure_conf_from_text(resp)
+
+
+
+
 
     # ------------------------------------------------------------------ #
     # Convenience multimodal wrapper

@@ -4,12 +4,14 @@ scratch/relevancy.py
 
 Multimodal **image–headline relevancy checker** (pipeline *Step-02*).
 
-Given a *news image* and its *headline* the LLM answers **exactly** one of:
+Given a *news image* and its *headline* the LLM must decide whether the image
+**supports or refutes the specific claim in that headline**, and answer
+**exactly** one of:
 
     • `Finish[IMAGE REFUTES]`
     • `Finish[IMAGE SUPPORTS]`
 
-plus a short explanation.
+plus a short justification.
 
 Public API
 ----------
@@ -23,13 +25,9 @@ Returns
 -------
 
 {
-"text": "<raw LLM answer>",
-"success": bool
+  "text": "<raw LLM answer>",
+  "success": bool
 }
-
-pgsql
-Copy
-Edit
 
 If Pillow fails to open the image or the file is missing, ``success`` is False.
 """
@@ -58,16 +56,17 @@ class ImageHeadlineRelevancyChecker:
 
     # Frozen system prompt (class constant so it’s not re-created)
     _PROMPT: str = (
-        "According to the given news image, determine if the news image goes "
-        "against objective facts.  Follow the instructions exactly:\n\n"
-        "Thought 1: Please describe the content in the news image that goes "
-        "against the objective fact.\n"
-        "Observation: [Fact‐conflicting Description]\n"
-        "Action 1: Draw the conclusion based on the observation:\n"
-        "- If there is any credible objective fact refuting the news image, "
-        "answer exactly: Finish[IMAGE REFUTES].\n"
-        "- Otherwise, answer exactly: Finish[IMAGE SUPPORTS]."
-    )
+        "You will be given a **news HEADLINE** and its **IMAGE**. "
+        "Decide whether the IMAGE contradicts the **specific claim** made in the HEADLINE.\n\n"
+        "Follow the instructions exactly:\n"
+        "Thought 1: Briefly describe only the visible evidence in the image that is relevant to the HEADLINE's claim.\n"
+        "Observation: [Concise visual evidence]\n"
+        "Action 1: Based on the Observation and the HEADLINE's claim:\n"
+        "- If the image contradicts/refutes the claim, answer exactly: Finish[IMAGE REFUTES].\n"
+        "- Otherwise, answer exactly: Finish[IMAGE SUPPORTS].\n"
+        "Rules: Use only what is visible in the image. Do not add outside knowledge. "
+        "Judge against the HEADLINE as written."
+    )    
 
     def __init__(self, model_router: ModelRouter):
         self._mr = model_router
@@ -97,9 +96,18 @@ class ImageHeadlineRelevancyChecker:
             return {"text": "Image File Not Found", "success": False}
 
         try:
+            # Include the HEADLINE in the human message so the model can compare
+            # the specific textual claim against the visual evidence.
+            hp = (headline or "").strip()
+            text_prompt = (
+                f"HEADLINE:\n{hp}\n\n"
+                "Task: Compare the IMAGE to the exact HEADLINE claim above and decide per the instructions. "
+                "Respond with a brief justification and the required Finish[...] token."
+            )
+
             response = self._mr.call_multimodal(
                 system_prompt=self._PROMPT,
-                text_prompt="Analyze the image for factual accuracy.",
+                text_prompt=text_prompt,
                 image_path=image_path,
             )
             raw = response.get("raw") if response else None
