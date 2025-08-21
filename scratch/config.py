@@ -70,7 +70,7 @@ FRESHNESS_POLICY: str = "auto"
 OLD_EVENT_YEARS: int = 3          # (treat ≥3 years as “historical”)
 
 # Small bonus to snippet score if it mentions the inferred target year
-TEMPORAL_MATCH_BONUS: int = 1     
+TEMPORAL_MATCH_BONUS: int = 2     
 
 
 # --------------------------------------------------------------------------- #

@@ -60,8 +60,6 @@ _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _NEWS_HINTS = ("news", "report", "fact check", "fact-check")
 _TOK_RE = re.compile(r"[A-Za-z0-9]+")
 _PUNCT_RE = re.compile(r"[^\w\s-]")  # keep letters/digits/_/-
-_NEWS_HINTS = ("news", "report", "fact check")
-_TOK_RE = re.compile(r"[A-Za-z0-9]+")
 
 
 def _sanitize_query(q: str, max_len: int = 120) -> str:
@@ -251,7 +249,8 @@ class WebQAModule:
 
     async def run(self) -> Dict[str, object]:
         freshness_days, target_year = _decide_freshness_and_year(self.question, self.event_report)
-
+        # Track which query actually produced the current snippets/results
+        query_used = self.question
         # 1) First retrieval
         try:
             snippets: List[str] = await self._retrieve(self.question, freshness_days, target_year)
@@ -264,17 +263,17 @@ class WebQAModule:
                 snippets = await self._retrieve(s_q, None, target_year)
                 if not snippets:
                     raise RuntimeError("No snippets after sanitize-retry")
-                self_question_used = s_q
+                query_used = s_q
             except Exception as exc2:
                 msg = f"Brave error (after sanitize): {exc2}"
                 logger.warning(msg)
                 return self._make_record(
                     answer=msg, answer_conf=0.0, snippets=[], ok=False, overlap_score=0,
-                    freshness_days_used=None, target_year=target_year, query_used=self.question,
+                    freshness_days_used=None, target_year=target_year, query_used=query_used,
                     widen_attempted=False, widen_success=False, widen_details={},
                 )
         # Fan-out to richer variants if the snippet pool is thin
-        query_used = self.question
+        
         if len(snippets) < max(8, C.MIN_SNIPPETS + 2):
             loc = (self.event_report or {}).get("location") if self.event_report else None
             yr = _extract_year_from_text((self.event_report or {}).get("date_time") if self.event_report else None)
@@ -299,8 +298,6 @@ class WebQAModule:
                 except Exception:
                     log.metric("webqa_variant_error")
             
-        else:
-            self_question_used = self.question
 
         # 2) If thin, **auto-retry once** with widened query
         widen_attempted = False

@@ -1,0 +1,13 @@
+2025-08-21 11:50:00      INFO  Logging to logs/run_20250821-115000.log
+2025-08-21 11:50:00      INFO  Applied CLI overrides: LIMIT=5
+2025-08-21 11:50:00      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=5  SEED=71
+2025-08-21 11:50:00      INFO  Dataset scan: meta=10000, kept=5, missing_images=9732, limit=5, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-21 11:50:00      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-21 11:55:47      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 11:55:47      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 11:55:47      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:00:33      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:00:33      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:00:33      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:05:01      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:05:04      INFO  Branch 2 has no GOOD Q-A pairs.

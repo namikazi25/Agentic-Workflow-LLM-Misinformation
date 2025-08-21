@@ -6,3 +6,16 @@
 2025-08-20 14:44:25      INFO  Branch 2 has no GOOD Q-A pairs.
 2025-08-20 14:47:12      INFO  Branch 0 has no GOOD Q-A pairs.
 2025-08-20 14:47:12      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 14:55:03      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 14:55:03      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 14:57:40      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 14:57:40      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 14:57:40      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 15:00:00      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 15:00:00      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-20 15:02:36      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-20 15:05:00      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-20 15:05:09      INFO  Results written to results/step08_async.jsonl
+2025-08-20 15:05:09      INFO  Running quick in-memory evaluation …
+2025-08-20 15:05:09      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=81  webqa_variant_added=47  webqa_backoff_no_gain=71  webqa_backoff_success=9  qgen_fuzzy_dup_hit=2  qgen_fuzzy_dup_final=1  spam_domain_block=66  spam_text_block=95  webqa_backoff_error=1

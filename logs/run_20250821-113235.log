@@ -1,0 +1,16 @@
+2025-08-21 11:32:35      INFO  Logging to logs/run_20250821-113235.log
+2025-08-21 11:32:35      INFO  Applied CLI overrides: LIMIT=5
+2025-08-21 11:32:35      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=5  SEED=71
+2025-08-21 11:32:36      INFO  Dataset scan: meta=10000, kept=5, missing_images=9732, limit=5, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-21 11:32:36      INFO  Pipeline start – 5 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-21 11:34:59      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 11:36:46   WARNING  Brave error on first try (TimeoutError()). Retrying with sanitized query.
+2025-08-21 11:38:20      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 11:40:34      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 11:40:34      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 11:40:34      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 11:42:40      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 11:44:51      INFO  Results written to results/step08_async.jsonl
+2025-08-21 11:44:51      INFO  Running quick in-memory evaluation …
+2025-08-21 11:44:51      INFO  ==== Pipeline metrics ====
+qa_gate_min_answer_len=35  webqa_backoff_no_gain=32  webqa_backoff_success=3  webqa_variant_added=9  spam_text_block=29  spam_domain_block=77  qgen_fuzzy_dup_hit=1  brave_error=1

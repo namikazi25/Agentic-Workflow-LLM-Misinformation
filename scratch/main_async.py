@@ -77,20 +77,12 @@ except Exception:
 
 logger.info("Logging to %s", log_path)
 
-# Single router (shared across the run). Downstream callers can temporarily
-# switch temperature to 0.0 for deterministic prompts and restore afterwards.
-mr = ModelRouter(C.MODEL_DEFAULT, C.TEMPERATURE)
-
-# Dataset
-dataset = MMFakeBenchDataset()
-
-# Output
-Path(C.RESULTS_PATH).parent.mkdir(parents=True, exist_ok=True)
+# Router is initialised inside `main()` to respect CLI/env overrides
+mr = None  # will be assigned in main()
 
 # Storage for optional evaluation (only if LIMIT is manageable)
 _y_pred: list[str] = []
 _y_true: list[str] = []
-
 # --------------------------------------------------------------------------- #
 # Async helpers
 # --------------------------------------------------------------------------- #

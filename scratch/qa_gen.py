@@ -99,13 +99,18 @@ _BASE_PROMPT = ChatPromptTemplate.from_messages(
 
                 • Produce **ONE** concise, Google-style query that will help
                   verify the headline.
-                • Prefer verifying the **core claim** (existence, who/what/where/when)
+                • Verify the **core claim** (existence, who/what/where/when)
                   before drilling into micro-details. Avoid over-specific patterns like
                   “Which specific …”, “What is the name of …”, “Who is the artist behind …”.
                   If a detail is unknown, aim for a query that still retrieves high-coverage,
                   authoritative reporting about the event.
                 • **Do NOT** repeat or paraphrase any question listed below in
                   either *PREVIOUS_BRANCH* or *ALREADY_ASKED*.
+                • The question **must** include at least one **verbatim** noun/entity from the HEADLINE,
+                  **and** a **time constraint**: a specific year/month if evident; otherwise say
+                  **"in the last 3 years"**. If a location is clearly stated in the HEADLINE,
+                  include it; otherwise do not fabricate location details.
+                • **Do NOT** introduce new named entities or attributes that are not present in the HEADLINE.
 
                 PREVIOUS_BRANCH:
                 {previous_qa}
@@ -129,11 +134,13 @@ _ENRICHED_PROMPT = ChatPromptTemplate.from_messages(
 
                 Using the event SUMMARY and optional LOCATION / DATE below,
                 write **ONE** concise, search-ready question that probes a
-                *still-uncertain* fact. The question should:
-                  • include at least one key noun/entity from the HEADLINE, and
-                  • when helpful, **prefer** to include the LOCATION and/or a
-                    specific **year/month** derived from DATE (but do not
-                    fabricate missing details).
+                *still-uncertain* fact. The question **must**:
+                  • include at least one **verbatim** key noun/entity from the HEADLINE, and
+                  • include the **LOCATION** when present below, and
+                  • include a **time constraint**: a specific **year/month** from DATE.
+                    If DATE is unknown, explicitly say: **"in the last 3 years"**.
+                  • **Do NOT** introduce new named entities or attributes that are not present
+                    in the HEADLINE or the SUMMARY. Avoid inventing numbers or names.
                 Also avoid over-specific requests for named lists or internal unit names;
                 prefer verifying whether the **reported event** occurred as stated.
 
@@ -227,6 +234,53 @@ def _fuzzy_dup(question: str, candidates: list[str]) -> bool:
     return False
 
 # --------------------------------------------------------------------------- #
+# New anchoring/validation helpers
+# --------------------------------------------------------------------------- #
+_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_MONTH_RE = re.compile(
+    r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
+    r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b",
+    re.I,
+)
+_RELAXED_ALLOW = {
+    # generic verification terms allowed even if not in headline/summary
+    "news","report","reports","reporting","fact","check","factcheck","fact-check","claim","claims",
+    "viral","image","images","photo","video","true","false","hoax","debunk","context","update",
+    "breaking","recent"
+}
+
+def _has_headline_anchor(q: str, headline: str) -> bool:
+    return bool(_tokens(q) & _tokens(headline))
+
+def _contains_location(q: str, loc: str | None) -> bool:
+    if not loc:
+        return True  # nothing to enforce
+    # token-based containment (at least one token of the location must appear)
+    loc_toks = _tokens(loc)
+    if not loc_toks:
+        return True
+    return bool(_tokens(q) & loc_toks)
+
+def _has_time_bound(q: str) -> bool:
+    ql = (q or "").lower()
+    if _YEAR_RE.search(ql):
+        return True
+    if "last 3 years" in ql or "past 3 years" in ql or "in the last three years" in ql:
+        return True
+    # accept month mention only when paired with a year
+    return False
+
+def _violates_no_new_entities(q: str, headline: str, summary: str, location: str | None) -> bool:
+    q_toks = _tokens(q)
+    allowed = _tokens(headline) | _tokens(summary) | (_tokens(location) if location else set())
+    # always allow months/years and a small set of generic verification terms
+    months = {m.group(0).lower() for m in _MONTH_RE.finditer(q)}
+    years = {m.group(0) for m in _YEAR_RE.finditer(q)}
+    allowed |= months | {y.lower() for y in years} | _RELAXED_ALLOW
+    extras = [t for t in q_toks if t not in allowed and not t.isdigit()]
+    # treat any “new” alpha token length ≥ 4 as a violation (heuristic)
+    return any(len(t) >= 4 for t in extras)
+# --------------------------------------------------------------------------- #
 # Main public class
 # --------------------------------------------------------------------------- #
 
@@ -303,6 +357,50 @@ class QAGenerationTool:
             # Empty response → give up immediately
             if not question:
                 return "", False
+
+            # -------- NEW: post-generation validation & anchoring -------- #
+            # 1) Headline anchor
+            if not _has_headline_anchor(question, self.headline):
+                if attempt < self.MAX_DUP_RETRY:
+                    log.metric("qgen_reprompt_head_anchor")
+                    # steer the LLM away from repeating this by injecting into previous_qa
+                    prev_qs.append(question)
+                    variables["previous_qa"] = json.dumps(prev_qs, ensure_ascii=False, indent=2)
+                    continue
+                # last-resort: append the main headline noun (first content token)
+                head_toks = list(_tokens(self.headline))
+                if head_toks:
+                    question = f"{question} {head_toks[0]}"
+
+            # 2) No-new-entities rule (relative to HEADLINE+SUMMARY+LOCATION)
+            if _violates_no_new_entities(question, self.headline, self.summary, self.location):
+                if attempt < self.MAX_DUP_RETRY:
+                    log.metric("qgen_reprompt_new_entities")
+                    prev_qs.append(question)
+                    variables["previous_qa"] = json.dumps(prev_qs, ensure_ascii=False, indent=2)
+                    continue
+                # last-resort: we keep the question but rely on retrieval filters
+
+            # 3) Location requirement (when available)
+            if self.location and not _contains_location(question, self.location):
+                if attempt < self.MAX_DUP_RETRY:
+                    log.metric("qgen_reprompt_location")
+                    prev_qs.append(question)
+                    variables["previous_qa"] = json.dumps(prev_qs, ensure_ascii=False, indent=2)
+                    continue
+                # last-resort auto-repair
+                question = f"{question} {self.location}"
+
+            # 4) Time bound requirement
+            if not _has_time_bound(question):
+                if attempt < self.MAX_DUP_RETRY:
+                    log.metric("qgen_reprompt_temporal")
+                    prev_qs.append(question)
+                    variables["previous_qa"] = json.dumps(prev_qs, ensure_ascii=False, indent=2)
+                    continue
+                # last-resort auto-repair
+                question = f"{question} in the last 3 years"
+
 
             key = _question_key(question)
             exact_dup = (key in self._registry) or any(_question_key(q) == key for q in prev_qs)

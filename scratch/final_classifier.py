@@ -29,6 +29,7 @@ from __future__ import annotations
 import re
 import textwrap
 from typing import Any, Dict, List, Tuple
+from datetime import datetime
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -86,6 +87,17 @@ def _get_chain(prompt_obj, llm):
 
 _DECISION_RE = re.compile(r"DECISION:\s*(Misinformation|Not Misinformation|Uncertain)", re.I)
 _REASON_RE = re.compile(r"REASON:\s*(.+)", re.I | re.S)
+_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
+_NEG_SUPPORT_RE = re.compile(
+    r"\b(false|fake|fabricated|hoax|debunk(?:ed|ing)?|misleading|incorrect|inaccurate|"
+    r"no evidence|not true|never happened|refute(?:s|d)?|denied)\b",
+    re.I,
+)
+
+
+    # ------------------------------------------------------------------ #
+    # NEW helpers
+    # ------------------------------------------------------------------ #
 
 
 # --------------------------------------------------------------------------- #
@@ -127,20 +139,21 @@ class FinalClassifier:
             return None
 
         if not C.USE_IMAGE_FALLBACK:
-            return ("Uncertain", "Image fallback disabled and no reliable Q-A evidence.")
+            return ("Uncertain", "Image fallback disabled and no reliable Q‑A evidence.")
 
         rel_flag = self._parse_relevancy()
         if rel_flag == "REFUTES":
             return (
                 "Misinformation",
-                "The image–headline relevancy analysis explicitly returns IMAGE REFUTES and no reliable Q-A evidence is available.",
+                "IMAGE REFUTES and no reliable Q‑A evidence is available.",
             )
         if rel_flag == "SUPPORTS":
+            # CHANGED: previously returned Not Misinformation on SUPPORTS; now prefer Uncertain.
             return (
-                "Not Misinformation",
-                "The image–headline relevancy analysis returns IMAGE SUPPORTS and no reliable Q-A evidence contradicts it.",
+                "Uncertain",
+                "IMAGE SUPPORTS but no reliable Q‑A evidence is available.",
             )
-        return ("Uncertain", "No reliable Q-A evidence and the image relevancy is inconclusive.")
+        return ("Uncertain", "No reliable Q‑A evidence and the image relevancy is inconclusive.")
     
     def _image_override_if_weak(self):
         """
@@ -172,10 +185,100 @@ class FinalClassifier:
         # If image is inconclusive, do not override; proceed to LLM verdict.
         return None
 
+    @staticmethod
+    def _extract_years(text: str | None) -> set[int]:
+        if not text:
+            return set()
+        try:
+            return {int(m.group(0)) for m in _YEAR_RE.finditer(text)}
+        except Exception:
+            return set()
 
+    @staticmethod
+    def _current_year() -> int:
+        try:
+            return datetime.utcnow().year
+        except Exception:
+            # Safe fallback if clock missing
+            return 2025
+
+    def _answer_supports_headline(self, answer: str) -> bool:
+        """
+        Heuristic: treat as supportive if the answer does NOT contain strong refutation/negation cues.
+        We intentionally avoid plain 'not' to reduce false negatives.
+        """
+        if not answer:
+            return False
+        return _NEG_SUPPORT_RE.search(answer) is None
+
+    def _has_time_aligned_text_refutation(self) -> bool:
+        """
+        Despite the name, this returns True when there exists at least one GOOD Q‑A that:
+            • is strong (overlap >= EVIDENCE_STRENGTH_MIN and conf >= MIN_CONF), and
+            • is time‑aligned (answer mentions the target year, or a year matching the headline,
+            or a recent year within OLD_EVENT_YEARS), and
+            • semantically SUPPORTS the headline claim (no strong negation cues).
+        This means the text **contradicts** the IMAGE REFUTES signal.
+        """
+        # Gather headline years for alignment fallback
+        head_years = self._extract_years(self.headline)
+        now = self._current_year()
+        recent_cutoff = now - max(1, int(getattr(C, "OLD_EVENT_YEARS", 3)))
+
+        for qa in self.good_pairs:
+            try:
+                overlap = float(qa.get("overlap_score", 0) or 0.0)
+                conf = float(qa.get("answer_conf", 0.0) or 0.0)
+                if overlap < float(getattr(C, "EVIDENCE_STRENGTH_MIN", 2)):
+                    continue
+                if conf < float(getattr(C, "MIN_CONF", 0.3)):
+                    continue
+
+                ans = (qa.get("answer") or "").strip()
+                if not self._answer_supports_headline(ans):
+                    continue
+
+                target_year = qa.get("target_year", None)
+                years_in_ans = self._extract_years(ans)
+                years_in_query = self._extract_years(qa.get("query_used", ""))
+
+                aligned = False
+                if isinstance(target_year, int):
+                    aligned = (target_year in years_in_ans) or (target_year in years_in_query)
+                if not aligned and head_years:
+                    aligned = bool(years_in_ans & head_years) or bool(years_in_query & head_years)
+                if not aligned and years_in_ans:
+                    aligned = any(y >= recent_cutoff for y in years_in_ans)
+                if not aligned and years_in_query:
+                    aligned = any(y >= recent_cutoff for y in years_in_query)
+
+                if aligned:
+                    return True
+            except Exception:
+                # Best-effort; ignore malformed QA records
+                continue
+        return False
 
     def run(self, router) -> Tuple[str, str]:
         # Heuristic fast path
+        # --- NEW pre-decision guards (make IMAGE REFUTES decisive by default) ---
+        rel_flag = self._parse_relevancy()
+        if rel_flag == "REFUTES":
+            # If we do not have strong, time-aligned textual support for the headline,
+            # call Misinformation immediately.
+            if not self._has_time_aligned_text_refutation():
+                return (
+                    "Misinformation",
+                    "IMAGE REFUTES and no time‑aligned text support for the headline was found in the GOOD Q‑A.",
+                )
+        if rel_flag == "SUPPORTS" and not self.good_pairs:
+            # Do not claim Not‑Misinformation on image alone when no GOOD Q‑A exists
+            return (
+                "Uncertain",
+                "IMAGE SUPPORTS but there is no reliable Q‑A evidence; marking Uncertain.",
+            )
+
+        # Heuristic fast path (after pre-guards)
         heuristic = self._short_circuit()
         if heuristic is not None:
             return heuristic

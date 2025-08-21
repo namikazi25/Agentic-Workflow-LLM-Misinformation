@@ -109,12 +109,8 @@ def _score_snippet(
 
     if target_year is not None and re.search(rf"\b{target_year}\b", text or ""):
         score += max(0, int(C.TEMPORAL_MATCH_BONUS))
-    # Tiny "newsiness" nudge (helps rank reporting over product/asset pages)
-    if text and re.search(r"\b(report|reported|according to|police said|fact-?check)\b", text, re.I):
-        score += 1
-    if url and re.search(r"(?:^|://)[^/]*news[^/]*\.", url, re.I):
-        score += 1
-    # Tiny "newsiness" nudge
+
+    # Tiny "newsiness" nudge (single +1 at most)
     newsy = False
     if text and re.search(r"\b(report|reported|according to|police said|fact-?check)\b", text, re.I):
         newsy = True
