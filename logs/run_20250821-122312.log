@@ -1,0 +1,30 @@
+2025-08-21 12:23:12      INFO  Logging to logs/run_20250821-122312.log
+2025-08-21 12:23:12      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-21 12:23:12      INFO  Dataset scan: meta=10000, kept=10, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test
+2025-08-21 12:23:12      INFO  Pipeline start – 10 samples, model=gemini-2.5-flash, chains=3, q_per_chain=3
+2025-08-21 12:29:25      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:29:25      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:29:25      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:33:04      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:37:42      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:37:42      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:37:42      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:42:28      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:42:28      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:42:28      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:46:52      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:51:15      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:55:18      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:55:18      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:55:18      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:56:58   WARNING  Brave error on first try (TimeoutError()). Retrying with sanitized query.
+2025-08-21 12:59:05      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:59:05      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:59:05      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 13:03:37      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 13:08:42      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 13:08:47      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 13:08:47      INFO  Results written to results/step08_async.jsonl
+2025-08-21 13:08:47      INFO  Running quick in-memory evaluation …
+2025-08-21 13:08:47      INFO  ==== Pipeline metrics ====
+qgen_reprompt_new_entities=171  qa_gate_min_answer_len=79  webqa_backoff_no_gain=77  qgen_fuzzy_dup_final=10  webqa_variant_added=39  spam_text_block=72  spam_domain_block=61  webqa_variant_error=1  webqa_backoff_success=1  webqa_backoff_error=1  brave_error=1

@@ -11,3 +11,12 @@
 2025-08-21 12:00:33      INFO  Branch 2 has no GOOD Q-A pairs.
 2025-08-21 12:05:01      INFO  Branch 0 has no GOOD Q-A pairs.
 2025-08-21 12:05:04      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:10:03      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:10:03      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:10:03      INFO  Branch 2 has no GOOD Q-A pairs.
+2025-08-21 12:14:21      INFO  Branch 0 has no GOOD Q-A pairs.
+2025-08-21 12:14:21      INFO  Branch 1 has no GOOD Q-A pairs.
+2025-08-21 12:14:24      INFO  Results written to results/step08_async.jsonl
+2025-08-21 12:14:24      INFO  Running quick in-memory evaluation …
+2025-08-21 12:14:24      INFO  ==== Pipeline metrics ====
+qgen_reprompt_new_entities=89  qa_gate_min_answer_len=41  spam_domain_block=90  webqa_backoff_no_gain=40  qgen_fuzzy_dup_final=4  webqa_variant_added=13  spam_text_block=26  qa_gate_low_conf=2  webqa_backoff_error=1
