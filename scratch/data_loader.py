@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 import logging
@@ -50,6 +51,35 @@ def _load_metadata() -> List[Dict[str, Any]]:
     """Read JSON once; raises FileNotFoundError if missing."""
     with open(C.DATA_JSON, encoding="utf-8") as fp:
         return json.load(fp)
+
+# --------------------------------------------------------------------------- #
+# Distortion family inference
+# --------------------------------------------------------------------------- #
+# Heuristic regex buckets (override by editing here if your schema differs)
+_PAT_TEXTUAL = re.compile(r"(text|caption|headline|claim|article|quote|statement|context)", re.I)
+_PAT_VISUAL = re.compile(r"(image|photo|visual|picture|manipulat|deepfake|ai[- ]?generated|photoshop|cgi)", re.I)
+_PAT_CROSS  = re.compile(r"(cross|mismatch|inconsisten|caption[- ]image|out[- ]of[- ]context)", re.I)
+
+def _infer_group(entry: Dict[str, Any]) -> str:
+    """
+    Map metadata to one of: 'textual' | 'visual' | 'crossmodal' | 'unknown'
+    Uses common fields; customize if your JSON has a dedicated 'veracity_type'.
+    """
+    fields = [
+        entry.get("veracity_type", ""),
+        entry.get("distortion_type", ""),
+        entry.get("attack_type", ""),
+        entry.get("fake_cls", ""),
+        entry.get("category", ""),
+    ]
+    blob = " ".join(str(x) for x in fields).lower()
+    if _PAT_TEXTUAL.search(blob):
+        return "textual"
+    if _PAT_VISUAL.search(blob):
+        return "visual"
+    if _PAT_CROSS.search(blob):
+        return "crossmodal"
+    return "unknown"
 
 
 class MMFakeBenchDataset(Dataset):
@@ -91,18 +121,72 @@ class MMFakeBenchDataset(Dataset):
                 missing += 1
                 continue  # drop
             entry["_abs_path"] = str(img_abs)
+            # annotate distortion group
+            entry["_group"] = _infer_group(entry)
             items.append(entry)
 
-        # 3) deterministic sub-sampling
-        if limit is not None and len(items) > limit:
-            random.seed(seed)
-            random.shuffle(items)
-            items = items[:limit]
+        # 3) slice by requested distortion mode (if any)
+        mode = (C.DISTORTION_MODE or "any").lower()
+        if mode not in {"any", "textual", "visual", "crossmodal"}:
+            logger.warning("Unknown DISTORTION_MODE=%r – falling back to 'any'", mode)
+            mode = "any"
 
+        # Partition by label and (optionally) group
+        def _is_true(e: Dict[str, Any]) -> bool:
+            return str(e.get("gt_answers", "")).strip().lower() == "true"
+
+        def _is_fake(e: Dict[str, Any]) -> bool:
+            return str(e.get("gt_answers", "")).strip().lower() == "fake"
+
+        if mode == "any":
+            pos_all = [e for e in items if _is_fake(e)]
+            neg_all = [e for e in items if _is_true(e)]
+        else:
+            pos_all = [e for e in items if _is_fake(e) and e.get("_group") == mode]
+            if C.APPLY_MODE_TO_TRUE:
+                neg_all = [e for e in items if _is_true(e) and e.get("_group") == mode]
+            else:
+                neg_all = [e for e in items if _is_true(e)]
+
+        # 4) build a 50/50 balanced sample (deterministic)
+        random.seed(seed)
+        random.shuffle(pos_all)
+        random.shuffle(neg_all)
+
+        if limit is None:
+            # Use the maximum perfectly balanced size available
+            half = min(len(pos_all), len(neg_all))
+            pos_keep = pos_all[:half]
+            neg_keep = neg_all[:half]
+        else:
+            # Force 50/50 split
+            half = limit // 2
+            pos_keep = pos_all[:half]
+            neg_keep = neg_all[: (limit - half)]
+            # Strictness: if not enough on either side, either raise or shrink
+            if (len(pos_keep) < half or len(neg_keep) < (limit - half)):
+                msg = (
+                    f"Insufficient samples for 50/50 split in mode='{mode}': "
+                    f"Fake={len(pos_all)}, True={len(neg_all)}, requested={limit}"
+                )
+                if C.STRICT_BALANCE:
+                    logger.error(msg)
+                    raise RuntimeError(msg)
+                else:
+                    logger.warning(msg + " – shrinking to available balanced size.")
+                    half2 = min(len(pos_all), len(neg_all))
+                    pos_keep = pos_all[:half2]
+                    neg_keep = neg_all[:half2]
+
+        items = pos_keep + neg_keep
+        random.shuffle(items)  # avoid label-order bias in downstream loops
         kept = len(items)
         logger.info(
-            "Dataset scan: meta=%d, kept=%d, missing_images=%d, limit=%s, seed=%s, images_dir=%s",
-            total, kept, missing, str(limit), str(seed), str(base_dir),
+            "Dataset scan: meta=%d, kept=%d, missing_images=%d, limit=%s, seed=%s, images_dir=%s, mode=%s, "
+            "counts(Fake=%d, True=%d)",
+            total, kept, missing, str(limit), str(seed), str(base_dir), mode,
+            sum(1 for e in items if _is_fake(e)),
+            sum(1 for e in items if _is_true(e)),
         )
 
         if not items:
@@ -141,3 +225,16 @@ class MMFakeBenchDataset(Dataset):
         """Return simple counts for sanity-checks."""
         from collections import Counter
         return Counter(e["gt_answers"] for e in self._items)  # type: ignore[arg-type]
+
+    def stats_by_group(self) -> Dict[str, Dict[str, int]]:
+        """
+        Return nested counts by distortion group and label, e.g.:
+        {"textual": {"Fake": 12, "True": 12}, "visual": {...}, ...}
+        """
+        out: Dict[str, Dict[str, int]] = {}
+        for e in self._items:
+            g = e.get("_group", "unknown")
+            y = e.get("gt_answers", "NA")
+            out.setdefault(g, {}).setdefault(y, 0)
+            out[g][y] += 1
+        return out

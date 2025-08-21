@@ -1,0 +1,9 @@
+2025-08-21 20:18:08      INFO  Logging to logs/run_20250821-201808.log
+2025-08-21 20:18:08      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-21 20:18:08   WARNING  Insufficient samples for 50/50 split in mode='textual': Fake=0, True=0, requested=10 – shrinking to available balanced size.
+2025-08-21 20:18:08      INFO  Dataset scan: meta=10000, kept=0, missing_images=9732, limit=10, seed=71, images_dir=data/MMFakeBench_test-001/MMFakeBench_test, mode=textual, counts(Fake=0, True=0)
+2025-08-21 20:18:08     ERROR  No samples available after filtering. Check paths and structure.
+  DATA_JSON=data/MMFakeBench_test.json
+  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test
+  meta_entries=10000, missing_images=9732
+2025-08-21 20:18:08     ERROR  Dataset initialisation error: Dataset initialisation resulted in 0 samples. (DATA_JSON=data/MMFakeBench_test.json, IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test)

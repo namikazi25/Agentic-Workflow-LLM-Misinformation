@@ -179,7 +179,7 @@ async def process_sample(sample_idx: int, sample) -> dict:
 # --------------------------------------------------------------------------- #
 
 
-def _apply_overrides(*, data_json: str | None, images_dir: str | None, limit: int | None, seed: int | None):
+def _apply_overrides(*, data_json: str | None, images_dir: str | None, limit: int | None, seed: int | None, mode: str | None = None):
     """Mutate config with CLI overrides (if provided) and log the effective values."""
     changed = []
     if data_json is not None and data_json != C.DATA_JSON:
@@ -190,15 +190,17 @@ def _apply_overrides(*, data_json: str | None, images_dir: str | None, limit: in
         C.LIMIT = limit; changed.append(f"LIMIT={limit}")
     if seed is not None and seed != C.SEED:
         C.SEED = seed; changed.append(f"SEED={seed}")
+    if mode is not None and mode != C.DISTORTION_MODE:
+        C.DISTORTION_MODE = mode; changed.append(f"DISTORTION_MODE={mode}")
     if changed:
         logger.info("Applied CLI overrides: %s", ", ".join(changed))
     logger.info("Dataset paths: DATA_JSON=%s  IMAGES_DIR=%s  LIMIT=%s  SEED=%s",
                 C.DATA_JSON, C.IMAGES_DIR, str(C.LIMIT), str(C.SEED))
 
 
-async def main(*, data_json: str | None = None, images_dir: str | None = None, limit: int | None = None, seed: int | None = None):
+async def main(*, data_json: str | None = None, images_dir: str | None = None, limit: int | None = None, seed: int | None = None, mode: str | None = None):
     # Apply CLI overrides before creating router/dataset
-    _apply_overrides(data_json=data_json, images_dir=images_dir, limit=limit, seed=seed)
+    _apply_overrides(data_json=data_json, images_dir=images_dir, limit=limit, seed=seed, mode=mode)
 
     # Single router (shared across the run). Downstream callers can temporarily
     # switch temperature to 0.0 for deterministic prompts and restore afterwards.

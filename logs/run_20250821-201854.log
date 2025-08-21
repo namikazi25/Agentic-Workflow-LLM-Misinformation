@@ -1,0 +1,4 @@
+2025-08-21 20:18:54      INFO  Logging to logs/run_20250821-201854.log
+2025-08-21 20:18:54      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-21 20:18:54     ERROR  Insufficient samples for 50/50 split in mode='textual': Fake=0, True=0, requested=10
+2025-08-21 20:18:54     ERROR  Dataset initialisation error: Insufficient samples for 50/50 split in mode='textual': Fake=0, True=0, requested=10 (DATA_JSON=data/MMFakeBench_test.json, IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test)

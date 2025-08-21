@@ -29,10 +29,28 @@ def _env_int(name: str, default):
     except Exception:
         return default
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return str(val).strip().lower() in {"1", "true", "yes", "y", "on"}
+
 DATA_JSON: str = os.getenv("DATA_JSON", "data/MMFakeBench_test.json")
 IMAGES_DIR: str = os.getenv("IMAGES_DIR", "data/MMFakeBench_test-001/MMFakeBench_test")
 LIMIT: int | None = _env_int("DATA_LIMIT", 10)
 SEED: int = _env_int("DATA_SEED", 71)
+
+# --------------------------------------------------------------------------- #
+# Distortion-family sampling (dataset slice control)
+# --------------------------------------------------------------------------- #
+# Choose ONE of: "any", "textual", "visual", "crossmodal"
+DISTORTION_MODE: str = os.getenv("DISTORTION_MODE", "any").lower()
+# Apply the same mode to TRUE (not-misinformation) items too (strict slice)
+APPLY_MODE_TO_TRUE: bool = _env_bool("APPLY_MODE_TO_TRUE", True)
+# Enforce exact 50/50 balance; if not enough items exist, raise
+STRICT_BALANCE: bool = _env_bool("STRICT_BALANCE", True)
+
 
 # --------------------------------------------------------------------------- #
 # LLM / model routing

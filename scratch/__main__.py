@@ -29,6 +29,9 @@ def _parse_args(argv=None):
                    help='Sample limit (int or "None") to override config/DATA_LIMIT.')
     p.add_argument("--seed", dest="seed", type=int, default=None,
                    help="Sampling seed to override config/DATA_SEED.")
+    p.add_argument("--mode", dest="mode", type=str, default=None,
+                   choices=["any", "textual", "visual", "crossmodal"],
+                   help="Distortion slice to use for this run.")
     return p.parse_args(argv)
 
 if __name__ == "__main__":
@@ -43,6 +46,7 @@ if __name__ == "__main__":
             images_dir=args.images_dir,
             limit=lim,
             seed=args.seed,
+            mode=args.mode,
         ))
     except KeyboardInterrupt:
         # Ensure a clean exit status instead of a traceback
