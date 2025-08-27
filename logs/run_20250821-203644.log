@@ -1,0 +1,10 @@
+2025-08-21 20:36:44      INFO  Logging to logs/run_20250821-203644.log
+2025-08-21 20:36:44      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=10  SEED=71
+2025-08-21 20:36:45     ERROR  Insufficient samples for 50/50 split.
+  mode='textual'  LIMIT=10
+  available(Fake=0, True=0)  required(Fake=5, True=5)
+  Hint: lower --limit, choose a different --mode, or ensure your dataset labels include canonical family names for TRUE items (e.g., 'Textual Veracity Distortion').
+2025-08-21 20:36:45     ERROR  Dataset initialisation error: Insufficient samples for 50/50 split.
+  mode='textual'  LIMIT=10
+  available(Fake=0, True=0)  required(Fake=5, True=5)
+  Hint: lower --limit, choose a different --mode, or ensure your dataset labels include canonical family names for TRUE items (e.g., 'Textual Veracity Distortion'). (DATA_JSON=data/MMFakeBench_test.json, IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test)

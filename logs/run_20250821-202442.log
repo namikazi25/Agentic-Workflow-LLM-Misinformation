@@ -1,0 +1,5 @@
+2025-08-21 20:24:42      INFO  Logging to logs/run_20250821-202442.log
+2025-08-21 20:24:42      INFO  Applied CLI overrides: LIMIT=20, SEED=42
+2025-08-21 20:24:42      INFO  Dataset paths: DATA_JSON=data/MMFakeBench_test.json  IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test  LIMIT=20  SEED=42
+2025-08-21 20:24:43     ERROR  Insufficient samples for 50/50 split in mode='any': Fake=268, True=0, requested=20
+2025-08-21 20:24:43     ERROR  Dataset initialisation error: Insufficient samples for 50/50 split in mode='any': Fake=268, True=0, requested=20 (DATA_JSON=data/MMFakeBench_test.json, IMAGES_DIR=data/MMFakeBench_test-001/MMFakeBench_test)

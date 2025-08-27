@@ -41,6 +41,22 @@ IMAGES_DIR: str = os.getenv("IMAGES_DIR", "data/MMFakeBench_test-001/MMFakeBench
 LIMIT: int | None = _env_int("DATA_LIMIT", 10)
 SEED: int = _env_int("DATA_SEED", 71)
 
+
+
+# --- Heads & fusion ---
+NUM_CHAINS: int = 1                  # single question
+NUM_Q_PER_CHAIN: int = 1
+USE_SELECTOR: bool = False           # disable qa_selector path
+FUSER_MODEL_PATH: str = "models/fuser.joblib"
+ABSTAIN_TAU: float = 0.60            # min head-confidence to avoid abstain
+
+# Strong/confident thresholds (used by heads/fuser)
+TEXT_STRONG_CONF: float = 0.60
+CONSISTENCY_STRONG_CONF: float = 0.60
+VISUAL_FAKE_CONF: float = 0.60
+
+
+
 # --------------------------------------------------------------------------- #
 # Distortion-family sampling (dataset slice control)
 # --------------------------------------------------------------------------- #
@@ -63,8 +79,8 @@ TEMPERATURE: float = 0.2
 # Pipeline hyper-parameters
 # --------------------------------------------------------------------------- #
 
-NUM_CHAINS: int = 3
-NUM_Q_PER_CHAIN: int = 3
+# NUM_CHAINS: int = 3
+# NUM_Q_PER_CHAIN: int = 3
 QGEN_STRATEGY: str = "auto"          # headline | report | auto
 
 # --------------------------------------------------------------------------- #

@@ -56,9 +56,37 @@ def _load_metadata() -> List[Dict[str, Any]]:
 # Distortion family inference
 # --------------------------------------------------------------------------- #
 # Heuristic regex buckets (override by editing here if your schema differs)
-_PAT_TEXTUAL = re.compile(r"(text|caption|headline|claim|article|quote|statement|context)", re.I)
-_PAT_VISUAL = re.compile(r"(image|photo|visual|picture|manipulat|deepfake|ai[- ]?generated|photoshop|cgi)", re.I)
-_PAT_CROSS  = re.compile(r"(cross|mismatch|inconsisten|caption[- ]image|out[- ]of[- ]context)", re.I)
+_PAT_TEXTUAL = re.compile(r"(textual|text|caption|headline|claim|article|quote|statement|context)", re.I)
+_PAT_VISUAL  = re.compile(r"(visual|image|photo|picture|manipulat|deepfake|ai[- ]?generated|photoshop|cgi)", re.I)
+_PAT_CROSS   = re.compile(r"(cross[ -]?modal|crossmodal|mismatch|inconsisten|caption[- ]image|out[- ]of[- ]context)", re.I)
+
+# Canonical normalization for common dataset strings
+_FAMILY_CANON = {
+    # textual
+    "textualveracitydistortion": "textual",
+    "textual_veracity_distortion": "textual",
+    "textual veracity distortion": "textual",
+    "textual": "textual",
+    # visual
+    "visualveracitydistortion": "visual",
+    "visual_veracity_distortion": "visual",
+    "visual veracity distortion": "visual",
+    "visual": "visual",
+    # cross-modal
+    "crossmodalconsistencydistortion": "crossmodal",
+    "cross_modal_consistency_distortion": "crossmodal",
+    "cross-modal consistency distortion": "crossmodal",
+    "cross modal consistency distortion": "crossmodal",
+    "crossmodal": "crossmodal",
+    "cross-modal": "crossmodal",
+}
+
+def _canon_family(s: str | None) -> str | None:
+    if not s:
+        return None
+    t = re.sub(r"[\W_]+", " ", str(s).strip().lower())      # normalize hyphens/underscores
+    key = re.sub(r"\s+", "", t)                              # remove spaces for matching keys above
+    return _FAMILY_CANON.get(key)
 
 def _infer_group(entry: Dict[str, Any]) -> str:
     """
@@ -72,6 +100,12 @@ def _infer_group(entry: Dict[str, Any]) -> str:
         entry.get("fake_cls", ""),
         entry.get("category", ""),
     ]
+    # 1) Try canonical mapping first (most reliable)
+    for f in fields:
+        fam = _canon_family(f)
+        if fam:
+            return fam
+    # 2) Fall back to broad regex matching on joint blob
     blob = " ".join(str(x) for x in fields).lower()
     if _PAT_TEXTUAL.search(blob):
         return "textual"
@@ -165,9 +199,21 @@ class MMFakeBenchDataset(Dataset):
             neg_keep = neg_all[: (limit - half)]
             # Strictness: if not enough on either side, either raise or shrink
             if (len(pos_keep) < half or len(neg_keep) < (limit - half)):
+                # Build helpful diagnostics before raising
+                # Count per label for the *requested* mode (or 'any')
+                avail_fake = len(pos_all); avail_true = len(neg_all)
+                diag = {
+                    "requested_mode": mode,
+                    "available": {"Fake": avail_fake, "True": avail_true},
+                    "required": {"Fake": half, "True": (limit - half)},
+                }
                 msg = (
-                    f"Insufficient samples for 50/50 split in mode='{mode}': "
-                    f"Fake={len(pos_all)}, True={len(neg_all)}, requested={limit}"
+                    f"Insufficient samples for 50/50 split.\n"
+                    f"  mode='{mode}'  LIMIT={limit}\n"
+                    f"  available(Fake={avail_fake}, True={avail_true})  "
+                    f"required(Fake={half}, True={limit - half})\n"
+                    f"  Hint: lower --limit, choose a different --mode, or ensure your dataset "
+                    f"labels include canonical family names for TRUE items (e.g., 'Textual Veracity Distortion')."
                 )
                 if C.STRICT_BALANCE:
                     logger.error(msg)
