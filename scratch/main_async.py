@@ -142,18 +142,30 @@ async def process_sample(sample_idx: int, sample) -> dict:
             mr,
         ).run()
 
-    # 3️⃣  Concurrent chain generation
-    branches = await asyncio.gather(
-        *[generate_branch(headline, event_report) for _ in range(C.NUM_CHAINS)]
-    )
-
-    # 4️⃣  Best Q-A per branch (deterministic selection via router temp=0)
+    # 3️⃣  Single-shot WebQA
+    from .qa_gen import QAGenerationTool
+    q_tool = QAGenerationTool(headline, [], event_report=event_report, strategy=C.QGEN_STRATEGY)
+    question, ok_q = q_tool.run(mr.get())
+    if not ok_q: raise RuntimeError("Question generation failed.")
+    qa_record = await WebQAModule(question, mr, C.BRAVE_K, headline=headline, event_report=event_report).run()
     best_pairs = batch_select(branches, mr)
 
-    # 5️⃣  Final classification (deterministic verdict via router temp=0)
-    decision, reason = FinalClassifier(
-        headline, relevancy, best_pairs
-    ).run(mr)
+    # 4️⃣  Three heads
+    from .heads.text_head import from_webqa as text_head
+    from .heads.visual_head import run_visual_head
+    from .heads.consistency_head import run_consistency_head
+    text_feat = text_head(qa_record)
+    visual_feat = run_visual_head(mr, img_path)
+    cons_feat = run_consistency_head(rel_checker, img_path, headline)
+
+    # 5️⃣  Fuser inference
+    from .fuser_infer import decide as fuser_decide
+    tmp_record = {
+        "head_text": text_feat,
+        "head_visual": visual_feat,
+        "head_consistency": cons_feat,
+    }
+    decision, prob, reason = fuser_decide(tmp_record, tau=C.ABSTAIN_TAU)
 
     record = {
         "sample_idx": sample_idx,
@@ -161,8 +173,12 @@ async def process_sample(sample_idx: int, sample) -> dict:
         "headline": headline,
         "label_binary": label_bin,
         "label_multiclass": label_multi,
-        "relevancy": relevancy,
-        "best_qa_pairs": best_pairs,
+        "relevancy": relevancy,            # keep raw for debugging
+        "qa_record": qa_record,            # single WebQA turn
+        "head_text": text_feat,
+        "head_visual": visual_feat,
+        "head_consistency": cons_feat,
+        "fuser_prob": prob,
         "decision": decision,
         "explanation": reason,
     }

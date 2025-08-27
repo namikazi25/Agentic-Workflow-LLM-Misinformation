@@ -111,13 +111,14 @@ class ImageHeadlineRelevancyChecker:
                 image_path=image_path,
             )
             raw = response.get("raw") if response else None
+            conf = float(response.get("confidence", 0.6)) if response else 0.6
             text = getattr(raw, "content", None) or str(raw or "")
             text = text.strip()
 
             if not text:
                 raise RuntimeError("Empty response from LLM")
 
-            return {"text": text, "success": True}
+            return {"text": text, "success": True, "confidence": conf}
 
         except Exception as exc:  # noqa: BLE001
             logger.error("Relevancy check failed: %s", exc, exc_info=False)
